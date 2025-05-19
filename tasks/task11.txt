@@ -1,0 +1,64 @@
+# Task 11: Documentation
+
+## Objective
+Create comprehensive documentation for the project, including a README with usage instructions, code documentation, and examples.
+
+## Detailed Steps
+
+### 1. Create Project README
+- Write a detailed README.md with:
+  - Project overview
+  - Installation instructions
+  - Usage examples
+  - Dataset information
+  - Configuration options
+  - Troubleshooting guide
+
+### 2. Document Code
+- Add docstrings to all classes and functions
+- Create module-level documentation
+- Document configuration options
+- Add type hints
+
+### 3. Create Usage Examples
+- Create example scripts for common use cases:
+  - Creating a fresh dataset with all sources
+  - Creating a dataset with specific sources
+  - Appending a new dataset
+  - Resuming from a checkpoint
+- Add comments explaining each step
+
+### 4. Create Architecture Documentation
+- Document the overall architecture
+- Create diagrams showing component relationships
+- Document the data flow
+
+### 5. Create Dataset Documentation
+- Document each dataset source
+- Describe the schema conversion process
+- Document any dataset-specific considerations
+
+### 6. Create Troubleshooting Guide
+- Document common issues and solutions
+- Create a FAQ section
+- Document error messages and their meaning
+
+### 7. Create Development Guide
+- Document how to add new dataset processors
+- Describe the development workflow
+- Document testing procedures
+
+## Acceptance Criteria
+- README provides clear usage instructions
+- Code is well-documented with docstrings and comments
+- Usage examples demonstrate common use cases
+- Architecture documentation explains the system design
+- Dataset documentation describes each source
+- Troubleshooting guide helps resolve common issues
+- Development guide explains how to extend the system
+
+## Dependencies
+- All previous tasks (1-10)
+
+## Estimated Effort
+- 4-6 hours

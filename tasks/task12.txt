@@ -1,0 +1,199 @@
+# Task 12: Architecture Documentation
+
+## Objective
+Create comprehensive architecture documentation including component diagrams, data flow diagrams, sequence diagrams, and API specifications to provide a clear understanding of the system design.
+
+## Detailed Steps
+
+### 1. Create Component Relationship Diagrams
+- Create a high-level component diagram showing the main system components:
+  ```
+  +----------------+     +----------------+     +----------------+
+  |                |     |                |     |                |
+  |  Command Line  |---->|  Main Module   |---->|  Dataset       |
+  |  Interface     |     |                |     |  Processors    |
+  |                |     |                |     |                |
+  +----------------+     +----------------+     +----------------+
+                               |   ^                   |
+                               |   |                   |
+                               v   |                   v
+  +----------------+     +----------------+     +----------------+
+  |                |     |                |     |                |
+  |  Checkpoint    |<--->|  Dataset       |<----|  Schema        |
+  |  Manager       |     |  Combiner      |     |  Conversion    |
+  |                |     |                |     |                |
+  +----------------+     +----------------+     +----------------+
+                               |
+                               v
+                         +----------------+
+                         |                |
+                         |  Huggingface   |
+                         |  Upload        |
+                         |                |
+                         +----------------+
+  ```
+
+- Create detailed component diagrams for each major subsystem:
+  - Dataset Processor subsystem
+  - Checkpoint Management subsystem
+  - Dataset Combination subsystem
+  - Huggingface Upload subsystem
+
+### 2. Create Data Flow Diagrams
+- Create a high-level data flow diagram showing how data moves through the system:
+  ```
+  +-------------+     +-------------+     +-------------+     +-------------+
+  |             |     |             |     |             |     |             |
+  | Data Source |---->| Processor   |---->| Schema      |---->| Dataset     |
+  |             |     |             |     | Conversion  |     | Combination |
+  |             |     |             |     |             |     |             |
+  +-------------+     +-------------+     +-------------+     +-------------+
+                            |                                        |
+                            v                                        v
+                      +-------------+                          +-------------+
+                      |             |                          |             |
+                      | Checkpoint  |                          | Huggingface |
+                      | Storage     |                          | Upload      |
+                      |             |                          |             |
+                      +-------------+                          +-------------+
+  ```
+
+- Create detailed data flow diagrams for key processes:
+  - Dataset processing flow
+  - Checkpoint creation and resume flow
+  - Error handling flow
+  - Upload flow
+
+### 3. Create Sequence Diagrams
+- Create sequence diagrams for key operations:
+  - Fresh dataset creation sequence
+  - Incremental append sequence
+  - Resume from checkpoint sequence
+  - Error recovery sequence
+
+Example sequence diagram for fresh dataset creation:
+```
++--------+    +-------+    +----------+    +----------+    +------------+
+| User   |    | Main  |    | Processor|    | Combiner |    | Huggingface|
++--------+    +-------+    +----------+    +----------+    +------------+
+    |             |             |               |                |
+    | --fresh---> |             |               |                |
+    |             |             |               |                |
+    |             | --process-->|               |                |
+    |             |             |               |                |
+    |             |             |--checkpoint-->|               |
+    |             |             |               |                |
+    |             |             |---samples---->|               |
+    |             |             |               |                |
+    |             |             |<--complete----|               |
+    |             |             |               |                |
+    |             |<--complete--|               |                |
+    |             |             |               |                |
+    |             |------------------------combine-------------->|
+    |             |             |               |                |
+    |             |<------------------------upload complete------|
+    |             |             |               |                |
+    |<--complete--|             |               |                |
+    |             |             |               |                |
+```
+
+### 4. Define API Specifications
+- Document the internal API for each component:
+  - BaseProcessor API
+  - CheckpointManager API
+  - DatasetCombiner API
+  - HuggingfaceUploader API
+
+Example API specification for BaseProcessor:
+```python
+class BaseProcessor(ABC):
+    """
+    Abstract base class for dataset processors.
+    
+    Responsibilities:
+    - Load dataset from source
+    - Filter dataset (if needed)
+    - Convert to standard schema
+    - Handle checkpointing
+    - Skip problematic files
+    
+    Usage:
+    - Subclass for each dataset source
+    - Implement abstract methods
+    - Use in main processing pipeline
+    """
+    
+    @abstractmethod
+    def process(self, checkpoint=None):
+        """
+        Process the dataset and yield samples in the standard schema.
+        
+        Args:
+            checkpoint (dict, optional): Checkpoint data to resume from.
+                
+        Yields:
+            dict: Processed sample in the standard schema.
+            
+        Raises:
+            NetworkError: If there are network connectivity issues.
+            FileAccessError: If there are issues accessing files.
+            AudioProcessingError: If there are issues processing audio.
+            SchemaValidationError: If the sample fails schema validation.
+        """
+        pass
+    
+    @abstractmethod
+    def get_dataset_info(self):
+        """
+        Return information about the dataset.
+        
+        Returns:
+            dict: Dataset information including name, source, size, etc.
+        """
+        pass
+    
+    @abstractmethod
+    def estimate_size(self):
+        """
+        Estimate the size of the dataset.
+        
+        Returns:
+            tuple: (estimated_samples, estimated_size_bytes)
+        """
+        pass
+```
+
+### 5. Create Deployment Diagrams
+- Create deployment diagrams showing how the system is deployed:
+  - Local development deployment
+  - Production deployment
+  - Continuous integration deployment
+
+### 6. Document Design Patterns
+- Document the design patterns used in the system:
+  - Factory pattern for processor creation
+  - Strategy pattern for dataset processing
+  - Observer pattern for progress tracking
+  - Decorator pattern for error handling
+
+### 7. Create Architecture Decision Records
+- Document key architecture decisions:
+  - Why modular dataset processors?
+  - Why streaming processing?
+  - Why file-based checkpointing?
+  - Why specific error handling strategies?
+
+## Acceptance Criteria
+- Component diagrams clearly show system structure
+- Data flow diagrams illustrate data movement through the system
+- Sequence diagrams document key operations
+- API specifications provide clear interface definitions
+- Deployment diagrams show system deployment
+- Design patterns are well-documented
+- Architecture decisions are explained
+
+## Dependencies
+- All previous tasks (1-11)
+
+## Estimated Effort
+- 4-6 hours

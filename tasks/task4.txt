@@ -1,0 +1,67 @@
+# Task 4: Processed Voice TH Dataset Processor
+
+## Objective
+Implement a processor for the Porameht/processed-voice-th-169k dataset and convert it to the standard schema.
+
+## Detailed Steps
+
+### 1. Research Processed Voice TH Dataset
+- Examine the dataset structure on Huggingface (https://huggingface.co/datasets/Porameht/processed-voice-th-169k)
+- Understand the dataset's schema and audio format
+- Identify any potential challenges or special handling required
+
+### 2. Implement Processed Voice TH Processor Class
+- Create a new class that inherits from BaseProcessor
+- Implement all required methods:
+  ```python
+  class ProcessedVoiceTHProcessor(BaseProcessor):
+      def __init__(self, config):
+          super().__init__(config)
+          # Initialize dataset-specific settings
+          
+      def process(self, checkpoint=None):
+          # Load dataset
+          # Convert to standard schema
+          # Yield processed samples
+          
+      def get_dataset_info(self):
+          # Return dataset information
+          
+      def estimate_size(self):
+          # Estimate dataset size
+  ```
+
+### 3. Implement Dataset Loading
+- Use the Huggingface datasets library to load the dataset
+- Implement streaming loading if possible
+- Handle potential connection issues or loading errors
+
+### 4. Implement Schema Conversion
+- Map Processed Voice TH fields to standard schema
+- Generate sequential IDs (continuing from previous datasets if appending)
+- Extract audio data and calculate length
+- Extract transcript
+
+### 5. Implement Streaming Processing
+- Process the dataset in a streaming fashion to minimize memory usage
+- Implement checkpointing for long-running processing
+- Handle potential errors during processing
+
+### 6. Add Logging and Progress Tracking
+- Log detailed information about processing steps
+- Track and report progress
+- Log statistics about processed data
+
+## Acceptance Criteria
+- ProcessedVoiceTHProcessor successfully loads the dataset
+- Processor correctly converts to the standard schema
+- Processing works in a streaming fashion
+- Checkpointing allows resuming from interruptions
+- Detailed logs are generated during processing
+
+## Dependencies
+- Task 1: Project Setup
+- Task 2: Dataset Processor Interface
+
+## Estimated Effort
+- 4-6 hours

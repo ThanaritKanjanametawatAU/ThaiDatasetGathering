@@ -1,0 +1,76 @@
+# Task 6: Mozilla Common Voice Dataset Processor
+
+## Objective
+Implement a processor for the mozilla-foundation/common_voice_11_0 dataset, filter for Thai language content, and convert it to the standard schema.
+
+## Detailed Steps
+
+### 1. Research Mozilla Common Voice Dataset
+- Examine the dataset structure on Huggingface (https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0)
+- Understand how to filter for Thai language content
+- Identify the dataset's schema and audio format
+- Determine if any special handling is required
+
+### 2. Implement Mozilla Common Voice Processor Class
+- Create a new class that inherits from BaseProcessor
+- Implement all required methods:
+  ```python
+  class MozillaCommonVoiceProcessor(BaseProcessor):
+      def __init__(self, config):
+          super().__init__(config)
+          # Initialize dataset-specific settings
+          
+      def process(self, checkpoint=None):
+          # Load dataset
+          # Filter for Thai content
+          # Convert to standard schema
+          # Yield processed samples
+          
+      def get_dataset_info(self):
+          # Return dataset information
+          
+      def estimate_size(self):
+          # Estimate dataset size
+  ```
+
+### 3. Implement Thai Language Filtering
+- Load the dataset with the 'th' language filter if possible
+- Otherwise, filter for entries where language is Thai after loading
+- Log statistics about filtered data
+
+### 4. Implement Schema Conversion
+- Map Mozilla Common Voice fields to standard schema
+- Generate sequential IDs (continuing from previous datasets if appending)
+- Extract audio data and calculate length
+- Extract transcript
+
+### 5. Implement Streaming Processing
+- Process the dataset in a streaming fashion to minimize memory usage
+- Implement checkpointing for long-running processing
+- Handle potential errors during processing
+
+### 6. Add Logging and Progress Tracking
+- Log detailed information about processing steps
+- Track and report progress
+- Log statistics about processed data
+
+### 7. Implement Deduplication with VISTEC Common Voice TH
+- Check if there's overlap between this dataset and the VISTEC Common Voice TH dataset
+- Implement a strategy to avoid duplicates if necessary
+- Log information about potential duplicates
+
+## Acceptance Criteria
+- MozillaCommonVoiceProcessor successfully filters for Thai language content
+- Processor correctly converts to the standard schema
+- Processing works in a streaming fashion
+- Checkpointing allows resuming from interruptions
+- Detailed logs are generated during processing
+- Potential duplicates with VISTEC Common Voice TH are handled appropriately
+
+## Dependencies
+- Task 1: Project Setup
+- Task 2: Dataset Processor Interface
+- Task 5: VISTEC Common Voice TH Dataset Processor (for deduplication)
+
+## Estimated Effort
+- 5-7 hours

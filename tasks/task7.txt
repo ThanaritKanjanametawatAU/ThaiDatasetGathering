@@ -1,0 +1,67 @@
+# Task 7: Dataset Combination and Upload
+
+## Objective
+Implement functionality to combine processed datasets, handle ID generation, and upload the combined dataset to Huggingface.
+
+## Detailed Steps
+
+### 1. Implement Dataset Combination
+- Create a function to combine datasets from multiple processors
+- Handle sequential processing of datasets
+- Implement ID generation logic:
+  ```python
+  def generate_ids(datasets, start_id=1):
+      """Generate sequential IDs (S1, S2, ...) for combined datasets"""
+      current_id = start_id
+      for dataset in datasets:
+          for sample in dataset:
+              sample["ID"] = f"S{current_id}"
+              current_id += 1
+              yield sample
+  ```
+
+### 2. Implement ID Management for Append Mode
+- Create functionality to determine the last ID in an existing dataset
+- Implement logic to continue ID sequence when appending:
+  ```python
+  def get_last_id(dataset_name):
+      """Get the last ID from an existing dataset"""
+      # Load dataset and find the highest ID
+      # Return the numeric part of the ID
+  ```
+
+### 3. Implement Huggingface Dataset Creation
+- Create functions to build a Huggingface dataset from processed samples
+- Implement dataset features definition
+- Handle large dataset creation efficiently
+
+### 4. Implement Huggingface Upload
+- Create functions to upload the dataset to Huggingface
+- Implement authentication using the token from hf_token.txt
+- Handle upload errors and retries
+
+### 5. Implement Progress Tracking and Logging
+- Add detailed logging for the combination and upload process
+- Implement progress tracking for long-running operations
+- Create summary statistics for the combined dataset
+
+### 6. Implement Validation
+- Create validation functions to check the combined dataset
+- Verify that all samples conform to the standard schema
+- Check for any issues before uploading
+
+## Acceptance Criteria
+- Dataset combination works correctly
+- ID generation produces sequential IDs (S1, S2, ...)
+- Append mode correctly continues the ID sequence
+- Huggingface dataset creation and upload work properly
+- Progress tracking and logging provide detailed information
+- Validation ensures dataset quality before upload
+
+## Dependencies
+- Task 1: Project Setup
+- Task 2: Dataset Processor Interface
+- Tasks 3-6: Individual Dataset Processors
+
+## Estimated Effort
+- 6-8 hours

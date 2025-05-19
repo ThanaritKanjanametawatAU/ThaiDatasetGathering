@@ -1,0 +1,238 @@
+# Product Requirements Document: Thai Audio Dataset Collection
+
+## Project Overview
+Create a modular system to gather Thai audio data from multiple sources and combine them into a single Huggingface dataset (Thanarit/Thai-Voice) with a standardized schema.
+
+## Dataset Schema
+- ID: Sequential identifiers (S1, S2, S3, ...) globally unique across all datasets
+- Language: "th" for Thai
+- audio: Audio file data
+- transcript: Transcript of the audio if available
+- length: Duration of the audio in seconds
+
+## Technical Specifications
+
+### Schema Details
+- ID: String format "S{n}" where n is a sequential integer (e.g., "S1", "S2")
+- Language: Always "th" for Thai language
+- audio: Binary audio data or file path, depending on Huggingface dataset format
+- transcript: UTF-8 encoded text, may be empty if no transcript is available
+- length: Float value representing duration in seconds
+
+### Audio Format
+- Supported input formats: WAV, MP3, FLAC, OGG
+- Output format: WAV (PCM, 16-bit, mono)
+- Sampling rate: Preserve original, but document in metadata
+- Normalization: None (preserve original audio levels)
+
+### Validation Criteria
+- ID: Must match pattern "S\d+" and be unique across the dataset
+- Language: Must be "th"
+- audio: Must be a valid audio file that can be read
+- transcript: No specific validation, can be empty
+- length: Must be a positive float value
+
+## Data Sources
+
+### 1. GigaSpeech2 (GitHub: SpeechColab/GigaSpeech2) - Thai refined only
+   - Source: https://github.com/SpeechColab/GigaSpeech2
+   - Huggingface: https://huggingface.co/datasets/speechcolab/gigaspeech2
+   - Filter: Only Thai language content
+   - Access Method: Use Huggingface datasets library with language filter
+   - Estimated Size: ~10GB for Thai content (to be confirmed during implementation)
+   - Special Handling: May require filtering by language code and additional metadata
+
+### 2. Processed Voice TH (Huggingface: Porameht/processed-voice-th-169k)
+   - Source: https://huggingface.co/datasets/Porameht/processed-voice-th-169k
+   - Access Method: Direct access via Huggingface datasets library
+   - Estimated Size: ~169k samples, approximately 20-30GB
+   - Special Handling: None, already Thai-specific
+
+### 3. VISTEC Common Voice TH (GitHub: vistec-AI/commonvoice-th)
+   - Source: https://github.com/vistec-AI/commonvoice-th
+   - Access Method: Clone repository and process local files
+   - Estimated Size: To be determined during implementation
+   - Special Handling: May require additional processing steps based on repository structure
+
+### 4. Mozilla Common Voice (Official)
+   - Source: https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0
+   - Filter: Only Thai language content
+   - Access Method: Use Huggingface datasets library with language="th" filter
+   - Estimated Size: ~5-10GB for Thai content (to be confirmed during implementation)
+   - Special Handling: Ensure no duplication with VISTEC Common Voice TH
+
+## Functional Requirements
+
+### Core Functionality
+1. Process each dataset source through a modular architecture
+2. Convert each dataset to the standardized schema
+3. Combine datasets into a single Huggingface dataset
+4. Support both fresh creation and incremental appending
+5. Allow processing of specific datasets by name
+
+### Processing Modes
+1. Fresh Creation (--fresh)
+   - Create a new dataset from scratch
+   - Can process all datasets or specific ones
+   - Examples:
+     - `--fresh --all`: Process all available datasets
+     - `--fresh D1 D2`: Process only D1 and D2 datasets
+
+2. Incremental Append (--append)
+   - Add new data to an existing dataset
+   - Can append a single dataset at a time
+   - Example:
+     - `--append HugeSpeech`: Append only the HugeSpeech dataset
+
+### Data Handling
+1. Duplicate Management:
+   - Keep all data regardless of potential duplicates
+   - When appending, simply add new data without checking for duplicates
+
+2. Error Handling:
+   - Skip problematic files and continue processing
+   - Log errors for later review
+
+3. ID Generation:
+   - Generate sequential IDs (S1, S2, S3, ...) globally unique across all datasets
+   - When appending, continue the sequence from the last ID in the existing dataset
+
+### Storage and Processing
+1. Streaming Processing:
+   - Process data in a streaming fashion when possible to minimize storage requirements
+   - Maximum storage constraint: 100GB
+
+2. Checkpointing:
+   - Track processed files/samples in a log file
+   - Allow resuming from where processing left off
+   - Create checkpoints at regular intervals (default: every 5 minutes)
+   - Store checkpoints in a structured directory hierarchy
+
+3. Temporary Storage Management:
+   - Use a dedicated temporary directory for intermediate files
+   - Automatically clean up temporary files after successful processing
+   - Implement storage monitoring to prevent exceeding disk space limits
+   - Set configurable thresholds for storage warnings (default: 80% of available space)
+   - Implement automatic cleanup of oldest temporary files when space is low
+   - Preserve temporary files on error for debugging (with option to clean up)
+
+### Authentication
+1. Huggingface Authentication:
+   - Use token stored in hf_token.txt for uploading to Huggingface
+   - Validate token before starting any upload operations
+   - Handle token expiration gracefully
+
+### Command-Line Interface
+1. Basic Syntax:
+   ```
+   python main.py [--fresh|--append] [--all|dataset_names...] [options]
+   ```
+
+2. Primary Mode Options:
+   - `--fresh`: Create a new dataset from scratch
+   - `--append`: Append to an existing dataset
+
+3. Dataset Selection:
+   - `--all`: Process all available datasets
+   - Dataset names as positional arguments (e.g., `GigaSpeech2 ProcessedVoiceTH`)
+
+4. Additional Options:
+   - `--checkpoint-interval SECONDS`: Set checkpoint frequency (default: 300 seconds)
+   - `--log-level {DEBUG,INFO,WARNING,ERROR}`: Set logging level (default: INFO)
+   - `--output-dir PATH`: Specify output directory (default: ./output)
+   - `--temp-dir PATH`: Specify temporary directory (default: ./temp)
+   - `--max-samples N`: Limit number of samples to process per dataset (for testing)
+   - `--dry-run`: Run without uploading to Huggingface
+   - `--resume`: Resume from latest checkpoint
+   - `--resume-from PATH`: Resume from specific checkpoint file
+
+5. Examples:
+   ```
+   # Process all datasets and create a fresh dataset
+   python main.py --fresh --all
+
+   # Process only GigaSpeech2 and ProcessedVoiceTH, create fresh
+   python main.py --fresh GigaSpeech2 ProcessedVoiceTH
+
+   # Append MozillaCV dataset to existing dataset
+   python main.py --append MozillaCV
+
+   # Resume processing from latest checkpoint
+   python main.py --fresh --all --resume
+   ```
+
+6. Exit Codes:
+   - 0: Success
+   - 1: General error
+   - 2: Command-line argument error
+   - 3: Authentication error
+   - 4: Dataset access error
+   - 5: Processing error
+   - 6: Upload error
+
+## Non-Functional Requirements
+
+### Logging
+1. Detailed logging of all operations
+2. Log file should include:
+   - Processing steps
+   - Errors and skipped files
+   - Progress information
+   - Completion status
+
+### Modularity
+1. Each dataset processor should be in a separate Python file
+2. Common utilities should be shared across processors
+3. Design should allow easy addition of new dataset sources in the future
+
+### Performance
+1. Optimize for minimal storage usage (streaming when possible)
+2. Include progress tracking for long-running operations
+
+### Error Handling
+1. Robust error handling to prevent crashes
+2. Skip problematic files rather than failing the entire process
+3. Provide clear error messages in logs
+
+#### Error Categories and Handling Strategies
+1. Network Errors
+   - Temporary network issues: Retry up to 3 times with exponential backoff
+   - Persistent network failures: Log error, skip current file/sample, continue processing
+   - API rate limiting: Implement backoff strategy with configurable wait times
+
+2. File Access Errors
+   - Missing files: Log error, skip file, continue processing
+   - Permission issues: Log error, skip file, continue processing
+   - Corrupt files: Log error with details, skip file, continue processing
+
+3. Audio Processing Errors
+   - Unsupported format: Log error, attempt conversion if possible, skip if not
+   - Corrupt audio: Log error with details, skip file, continue processing
+   - Zero-length audio: Log warning, skip file, continue processing
+
+4. Schema Validation Errors
+   - Missing required fields: Log error, skip sample, continue processing
+   - Invalid field values: Log error with details, attempt to fix if possible, skip if not
+   - Encoding issues: Log error, attempt to fix encoding, skip if not possible
+
+5. Huggingface API Errors
+   - Authentication failures: Log error, retry with exponential backoff, abort after 5 attempts
+   - Upload failures: Log error, retry with exponential backoff, continue with next batch after 5 attempts
+   - Rate limiting: Implement backoff strategy with configurable wait times
+
+#### Error Reporting
+1. Error Logs
+   - Detailed error messages with timestamps, error codes, and context
+   - Categorized by error type for easier analysis
+   - Include stack traces for unexpected errors
+
+2. Error Summary
+   - Generate summary of errors at the end of processing
+   - Group by error type and dataset source
+   - Include counts and percentages of affected samples
+
+## Future Considerations
+1. Support for additional Thai audio datasets
+2. Potential preprocessing options for audio files
+3. Duplicate detection and management
+4. Advanced filtering options

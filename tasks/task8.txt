@@ -1,0 +1,350 @@
+# Task 8: Checkpointing and Resume
+
+## Objective
+Implement a robust checkpointing system to track processed files and create functionality to resume processing from where it left off.
+
+## Detailed Steps
+
+### 1. Design Checkpoint File Format
+- Define a JSON structure for checkpoint files:
+  ```json
+  {
+    "checkpoint_id": "unique_checkpoint_id",
+    "dataset": "dataset_name",
+    "processor": "processor_name",
+    "start_time": "ISO timestamp",
+    "last_update": "ISO timestamp",
+    "processed_count": 123,
+    "last_processed_id": "file_id_or_index",
+    "last_generated_id": "S123",
+    "status": "in_progress|completed|failed",
+    "error": "error_message_if_failed",
+    "processor_state": {
+      "current_position": 123,
+      "total_items": 1000,
+      "dataset_specific_state": {},
+      "processed_files": ["file1", "file2", "..."]
+    },
+    "statistics": {
+      "success_count": 120,
+      "error_count": 3,
+      "skipped_count": 0,
+      "processing_time_seconds": 3600,
+      "average_processing_time_per_item_ms": 123
+    },
+    "version": "1.0"
+  }
+  ```
+
+- Define checkpoint file naming convention:
+  - Format: `{dataset_name}_{timestamp}_{status}.json`
+  - Example: `GigaSpeech2_20230601120000_in_progress.json`
+
+- Define checkpoint frequency:
+  - Time-based: Create checkpoint every 5 minutes (configurable)
+  - Count-based: Create checkpoint every 1000 items processed (configurable)
+  - Always create checkpoint on graceful shutdown
+
+### 2. Implement Checkpoint Management
+
+#### Checkpoint Directory Structure
+```
+checkpoints/
+├── dataset1/
+│   ├── dataset1_20230601120000_in_progress.json
+│   ├── dataset1_20230601130000_in_progress.json
+│   ├── dataset1_20230601140000_completed.json
+│   └── latest.json (symlink to latest checkpoint)
+├── dataset2/
+│   └── ...
+└── _locks/
+    └── dataset1.lock (lock file to prevent concurrent access)
+```
+
+#### Checkpoint Manager Class
+```python
+class CheckpointManager:
+    def __init__(self, base_dir="checkpoints", max_checkpoints=10):
+        self.base_dir = base_dir
+        self.max_checkpoints = max_checkpoints
+        self._ensure_dirs()
+
+    def _ensure_dirs(self):
+        """Ensure checkpoint directories exist"""
+        os.makedirs(self.base_dir, exist_ok=True)
+        os.makedirs(os.path.join(self.base_dir, "_locks"), exist_ok=True)
+
+    def create_checkpoint(self, dataset_name, processor_name, state):
+        """Create a new checkpoint file"""
+        # Generate checkpoint ID and filename
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        checkpoint_id = f"{dataset_name}_{timestamp}"
+
+        # Create checkpoint data
+        checkpoint = {
+            "checkpoint_id": checkpoint_id,
+            "dataset": dataset_name,
+            "processor": processor_name,
+            "start_time": state.get("start_time", datetime.now().isoformat()),
+            "last_update": datetime.now().isoformat(),
+            "processed_count": state.get("processed_count", 0),
+            "last_processed_id": state.get("last_processed_id"),
+            "last_generated_id": state.get("last_generated_id"),
+            "status": state.get("status", "in_progress"),
+            "processor_state": state.get("processor_state", {}),
+            "statistics": state.get("statistics", {}),
+            "version": "1.0"
+        }
+
+        # Create dataset directory if it doesn't exist
+        dataset_dir = os.path.join(self.base_dir, dataset_name)
+        os.makedirs(dataset_dir, exist_ok=True)
+
+        # Write checkpoint file
+        filename = f"{dataset_name}_{timestamp}_{checkpoint['status']}.json"
+        filepath = os.path.join(dataset_dir, filename)
+
+        with open(filepath, 'w') as f:
+            json.dump(checkpoint, f, indent=2)
+
+        # Update latest.json symlink
+        latest_path = os.path.join(dataset_dir, "latest.json")
+        if os.path.exists(latest_path) or os.path.islink(latest_path):
+            os.remove(latest_path)
+        os.symlink(filename, latest_path)
+
+        # Cleanup old checkpoints
+        self._cleanup_old_checkpoints(dataset_name)
+
+        return checkpoint_id, filepath
+
+    def _cleanup_old_checkpoints(self, dataset_name):
+        """Remove old checkpoints, keeping only the most recent ones"""
+        dataset_dir = os.path.join(self.base_dir, dataset_name)
+        checkpoints = []
+
+        # Get all checkpoint files
+        for filename in os.listdir(dataset_dir):
+            if filename.startswith(dataset_name) and filename.endswith(".json"):
+                filepath = os.path.join(dataset_dir, filename)
+                mtime = os.path.getmtime(filepath)
+                checkpoints.append((filepath, mtime))
+
+        # Sort by modification time (newest first)
+        checkpoints.sort(key=lambda x: x[1], reverse=True)
+
+        # Remove old checkpoints
+        for filepath, _ in checkpoints[self.max_checkpoints:]:
+            try:
+                os.remove(filepath)
+            except Exception as e:
+                logger.warning(f"Failed to remove old checkpoint {filepath}: {str(e)}")
+```
+
+#### Checkpoint Locking
+- Implement file-based locking to prevent concurrent access to checkpoints:
+```python
+def acquire_checkpoint_lock(dataset_name, timeout=10):
+    """Acquire a lock for the dataset checkpoint"""
+    lock_file = os.path.join("checkpoints", "_locks", f"{dataset_name}.lock")
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        try:
+            # Try to create the lock file
+            with open(lock_file, 'x') as f:
+                f.write(str(os.getpid()))
+            return True
+        except FileExistsError:
+            # Lock file exists, check if process is still running
+            try:
+                with open(lock_file, 'r') as f:
+                    pid = int(f.read().strip())
+
+                # Check if process is still running
+                try:
+                    os.kill(pid, 0)  # Signal 0 doesn't kill the process, just checks if it exists
+                    # Process is still running, wait and retry
+                    time.sleep(0.5)
+                except OSError:
+                    # Process is not running, remove stale lock
+                    os.remove(lock_file)
+            except (ValueError, FileNotFoundError):
+                # Invalid PID or lock file was removed, retry
+                time.sleep(0.1)
+
+    return False
+
+def release_checkpoint_lock(dataset_name):
+    """Release the lock for the dataset checkpoint"""
+    lock_file = os.path.join("checkpoints", "_locks", f"{dataset_name}.lock")
+    try:
+        os.remove(lock_file)
+        return True
+    except FileNotFoundError:
+        return False
+```
+
+### 3. Implement Resume Functionality
+
+#### Loading Checkpoints
+```python
+def load_latest_checkpoint(dataset_name):
+    """Load the latest checkpoint for a dataset"""
+    dataset_dir = os.path.join("checkpoints", dataset_name)
+    latest_path = os.path.join(dataset_dir, "latest.json")
+
+    if not os.path.exists(latest_path):
+        logger.warning(f"No checkpoint found for dataset {dataset_name}")
+        return None
+
+    try:
+        # If latest.json is a symlink, get the actual file
+        if os.path.islink(latest_path):
+            actual_file = os.readlink(latest_path)
+            checkpoint_path = os.path.join(dataset_dir, actual_file)
+        else:
+            checkpoint_path = latest_path
+
+        # Load the checkpoint file
+        with open(checkpoint_path, 'r') as f:
+            checkpoint = json.load(f)
+
+        logger.info(f"Loaded checkpoint {checkpoint['checkpoint_id']} for dataset {dataset_name}")
+        return checkpoint
+    except Exception as e:
+        logger.error(f"Failed to load checkpoint for dataset {dataset_name}: {str(e)}")
+        return None
+
+def find_checkpoint_by_id(checkpoint_id):
+    """Find a checkpoint by its ID"""
+    # Extract dataset name from checkpoint ID
+    parts = checkpoint_id.split('_')
+    if len(parts) < 2:
+        logger.error(f"Invalid checkpoint ID format: {checkpoint_id}")
+        return None
+
+    dataset_name = parts[0]
+    dataset_dir = os.path.join("checkpoints", dataset_name)
+
+    # Look for checkpoint files matching the ID
+    for filename in os.listdir(dataset_dir):
+        if filename.startswith(checkpoint_id) and filename.endswith(".json"):
+            checkpoint_path = os.path.join(dataset_dir, filename)
+            try:
+                with open(checkpoint_path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load checkpoint {checkpoint_path}: {str(e)}")
+                return None
+
+    logger.warning(f"Checkpoint {checkpoint_id} not found")
+    return None
+```
+
+#### Resume Processing
+```python
+def resume_processing(dataset_name=None, checkpoint_id=None):
+    """Resume processing from a checkpoint"""
+    # Load the checkpoint
+    checkpoint = None
+    if checkpoint_id:
+        checkpoint = find_checkpoint_by_id(checkpoint_id)
+    elif dataset_name:
+        checkpoint = load_latest_checkpoint(dataset_name)
+    else:
+        logger.error("Must provide either dataset_name or checkpoint_id")
+        return None
+
+    if not checkpoint:
+        logger.warning("No checkpoint found to resume from")
+        return None
+
+    # Get the processor
+    processor_name = checkpoint["processor"]
+    try:
+        processor = get_processor(processor_name)
+    except Exception as e:
+        logger.error(f"Failed to get processor {processor_name}: {str(e)}")
+        return None
+
+    # Resume processing
+    logger.info(f"Resuming processing from checkpoint {checkpoint['checkpoint_id']}")
+    try:
+        # Create a new checkpoint with status "resuming"
+        checkpoint_manager = CheckpointManager()
+        state = checkpoint.copy()
+        state["status"] = "resuming"
+        checkpoint_manager.create_checkpoint(checkpoint["dataset"], processor_name, state)
+
+        # Resume processing
+        return processor.process(checkpoint=checkpoint)
+    except Exception as e:
+        logger.error(f"Failed to resume processing: {str(e)}")
+        return None
+```
+
+#### Automatic Resume on Failure
+```python
+def auto_resume_on_failure(func):
+    """Decorator to automatically resume processing on failure"""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        max_retries = 3
+        retry_count = 0
+
+        while retry_count < max_retries:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                retry_count += 1
+                logger.warning(f"Processing failed: {str(e)}. Retry {retry_count}/{max_retries}")
+
+                # Try to resume from the latest checkpoint
+                if "dataset_name" in kwargs:
+                    dataset_name = kwargs["dataset_name"]
+                    checkpoint = load_latest_checkpoint(dataset_name)
+                    if checkpoint:
+                        logger.info(f"Resuming from checkpoint {checkpoint['checkpoint_id']}")
+                        kwargs["checkpoint"] = checkpoint
+                    else:
+                        logger.warning(f"No checkpoint found for dataset {dataset_name}")
+
+                # Wait before retrying
+                time.sleep(5)
+
+        logger.error(f"Failed after {max_retries} retries")
+        raise Exception(f"Failed after {max_retries} retries")
+
+    return wrapper
+```
+
+### 4. Implement Checkpoint Validation
+- Create functions to validate checkpoint files
+- Implement logic to handle corrupted or incomplete checkpoints
+- Add recovery mechanisms for failed checkpoints
+
+### 5. Integrate with Dataset Processors
+- Modify the BaseProcessor class to support checkpointing
+- Update all dataset processors to use checkpoints
+- Implement checkpoint-aware processing logic
+
+### 6. Add Logging and Reporting
+- Create detailed logging for checkpoint operations
+- Implement reporting on checkpoint status
+- Add commands to list and manage checkpoints
+
+## Acceptance Criteria
+- Checkpoint files are created and updated during processing
+- Resume functionality correctly continues processing from checkpoints
+- Checkpoint validation handles corrupted or incomplete checkpoints
+- All dataset processors integrate with the checkpointing system
+- Logging and reporting provide detailed information about checkpoints
+
+## Dependencies
+- Task 1: Project Setup
+- Task 2: Dataset Processor Interface
+- Tasks 3-6: Individual Dataset Processors
+
+## Estimated Effort
+- 5-7 hours

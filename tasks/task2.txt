@@ -1,0 +1,341 @@
+# Task 2: Dataset Processor Interface
+
+## Objective
+Define the common interface for all dataset processors, implement a base dataset processor class, and create utility functions for schema conversion.
+
+## Detailed Steps
+
+### 1. Define Dataset Processor Interface
+Create an abstract base class (`BaseProcessor`) that defines:
+- Required methods for all dataset processors
+- Common functionality
+- Standard schema definition
+
+```python
+class BaseProcessor(ABC):
+    @abstractmethod
+    def process(self, checkpoint=None):
+        """Process the dataset and yield samples in the standard schema"""
+        pass
+
+    @abstractmethod
+    def get_dataset_info(self):
+        """Return information about the dataset"""
+        pass
+
+    @abstractmethod
+    def estimate_size(self):
+        """Estimate the size of the dataset"""
+        pass
+```
+
+### 2. Implement Standard Schema Validation
+- Create functions to validate samples against the standard schema
+- Define schema constants and validation rules:
+  ```python
+  SCHEMA = {
+      "ID": str,          # Sequential ID (S1, S2, ...)
+      "Language": str,    # Always "th" for Thai
+      "audio": bytes,     # Audio file data
+      "transcript": str,  # Transcript text
+      "length": float,    # Audio length in seconds
+  }
+
+  VALIDATION_RULES = {
+      "ID": {
+          "pattern": r"^S\d+$",
+          "required": True,
+          "unique": True,
+          "error_message": "ID must be in format 'S{n}' where n is a number"
+      },
+      "Language": {
+          "allowed_values": ["th"],
+          "required": True,
+          "error_message": "Language must be 'th'"
+      },
+      "audio": {
+          "required": True,
+          "min_size": 1,  # At least 1 byte
+          "validate_func": "is_valid_audio",
+          "error_message": "Audio must be a valid audio file"
+      },
+      "transcript": {
+          "required": False,  # Can be empty
+          "max_length": 10000,  # Reasonable maximum length
+          "error_message": "Transcript exceeds maximum length"
+      },
+      "length": {
+          "required": True,
+          "min_value": 0.1,  # At least 0.1 seconds
+          "max_value": 3600,  # Maximum 1 hour
+          "error_message": "Length must be between 0.1 and 3600 seconds"
+      }
+  }
+  ```
+
+- Implement validation functions:
+  ```python
+  def validate_sample(sample):
+      """Validate a sample against the schema and validation rules"""
+      errors = []
+
+      # Check required fields and types
+      for field, field_type in SCHEMA.items():
+          rules = VALIDATION_RULES.get(field, {})
+
+          # Check if field exists and is required
+          if field not in sample:
+              if rules.get("required", False):
+                  errors.append(f"Missing required field: {field}")
+              continue
+
+          # Check field type
+          if not isinstance(sample[field], field_type):
+              errors.append(f"Field {field} has wrong type: expected {field_type.__name__}, got {type(sample[field]).__name__}")
+              continue
+
+          # Apply specific validation rules
+          if "allowed_values" in rules and sample[field] not in rules["allowed_values"]:
+              errors.append(f"{rules.get('error_message', f'Invalid value for {field}')}")
+
+          if "pattern" in rules and not re.match(rules["pattern"], sample[field]):
+              errors.append(f"{rules.get('error_message', f'Invalid format for {field}')}")
+
+          if "min_value" in rules and sample[field] < rules["min_value"]:
+              errors.append(f"{rules.get('error_message', f'Value too small for {field}')}")
+
+          if "max_value" in rules and sample[field] > rules["max_value"]:
+              errors.append(f"{rules.get('error_message', f'Value too large for {field}')}")
+
+          if "min_size" in rules and len(sample[field]) < rules["min_size"]:
+              errors.append(f"{rules.get('error_message', f'Content too small for {field}')}")
+
+          if "max_length" in rules and len(sample[field]) > rules["max_length"]:
+              errors.append(f"{rules.get('error_message', f'Content too large for {field}')}")
+
+          if "validate_func" in rules and hasattr(self, rules["validate_func"]):
+              func = getattr(self, rules["validate_func"])
+              if not func(sample[field]):
+                  errors.append(f"{rules.get('error_message', f'Validation failed for {field}')}")
+
+      return errors
+  ```
+
+### 3. Create Utility Functions for Schema Conversion
+- Implement functions to convert from dataset-specific schemas to the standard schema
+- Create helper functions for common conversions:
+
+#### Audio Processing Utilities
+```python
+def is_valid_audio(audio_data):
+    """Check if audio data is valid"""
+    try:
+        # Use librosa or similar library to validate audio
+        import io
+        import librosa
+
+        # Create in-memory file-like object
+        audio_file = io.BytesIO(audio_data)
+
+        # Try to load audio
+        audio, sr = librosa.load(audio_file, sr=None, mono=True)
+
+        # Check if audio has content
+        if len(audio) == 0:
+            return False
+
+        return True
+    except Exception as e:
+        logger.error(f"Audio validation error: {str(e)}")
+        return False
+
+def get_audio_length(audio_data):
+    """Calculate audio length in seconds"""
+    try:
+        import io
+        import librosa
+
+        audio_file = io.BytesIO(audio_data)
+        audio, sr = librosa.load(audio_file, sr=None, mono=True)
+
+        # Calculate duration
+        duration = len(audio) / sr
+        return duration
+    except Exception as e:
+        logger.error(f"Error calculating audio length: {str(e)}")
+        return 0.0
+
+def convert_audio_format(audio_data, source_format=None, target_format="wav", sample_rate=None):
+    """Convert audio to target format"""
+    try:
+        import io
+        import soundfile as sf
+        import librosa
+
+        # Load audio
+        audio_file = io.BytesIO(audio_data)
+        audio, sr = librosa.load(audio_file, sr=sample_rate, mono=True)
+
+        # Create output buffer
+        output_buffer = io.BytesIO()
+
+        # Write to target format
+        sf.write(output_buffer, audio, sr, format=target_format)
+
+        # Get bytes
+        output_buffer.seek(0)
+        return output_buffer.read()
+    except Exception as e:
+        logger.error(f"Audio conversion error: {str(e)}")
+        return None
+```
+
+#### ID Generation
+```python
+def generate_id(current_index):
+    """Generate sequential ID in format S{n}"""
+    return f"S{current_index}"
+
+def extract_id_number(id_str):
+    """Extract numeric part from ID string"""
+    if id_str and id_str.startswith('S') and id_str[1:].isdigit():
+        return int(id_str[1:])
+    return None
+
+def get_next_id(existing_ids):
+    """Get next available ID based on existing IDs"""
+    if not existing_ids:
+        return "S1"
+
+    # Extract numeric parts
+    numeric_ids = [extract_id_number(id_str) for id_str in existing_ids if extract_id_number(id_str) is not None]
+
+    if not numeric_ids:
+        return "S1"
+
+    # Get max and add 1
+    next_num = max(numeric_ids) + 1
+    return f"S{next_num}"
+```
+
+### 4. Implement Checkpoint Integration
+- Add methods to track processing progress
+- Implement functions to save and load processing state
+- Create utilities for resuming from checkpoints
+
+### 5. Create Error Handling Framework
+
+#### Error Categories
+```python
+class ErrorCategory(Enum):
+    NETWORK = "network"
+    FILE_ACCESS = "file_access"
+    AUDIO_PROCESSING = "audio_processing"
+    SCHEMA_VALIDATION = "schema_validation"
+    HUGGINGFACE_API = "huggingface_api"
+    UNKNOWN = "unknown"
+```
+
+#### Custom Exceptions
+```python
+class DatasetProcessingError(Exception):
+    """Base exception for all dataset processing errors"""
+    def __init__(self, message, category=ErrorCategory.UNKNOWN, retriable=False):
+        self.message = message
+        self.category = category
+        self.retriable = retriable
+        super().__init__(self.message)
+
+class NetworkError(DatasetProcessingError):
+    """Exception for network-related errors"""
+    def __init__(self, message, retriable=True):
+        super().__init__(message, ErrorCategory.NETWORK, retriable)
+
+class FileAccessError(DatasetProcessingError):
+    """Exception for file access errors"""
+    def __init__(self, message, retriable=False):
+        super().__init__(message, ErrorCategory.FILE_ACCESS, retriable)
+
+class AudioProcessingError(DatasetProcessingError):
+    """Exception for audio processing errors"""
+    def __init__(self, message, retriable=False):
+        super().__init__(message, ErrorCategory.AUDIO_PROCESSING, retriable)
+
+class SchemaValidationError(DatasetProcessingError):
+    """Exception for schema validation errors"""
+    def __init__(self, message, errors=None):
+        self.errors = errors or []
+        super().__init__(message, ErrorCategory.SCHEMA_VALIDATION, False)
+
+class HuggingfaceAPIError(DatasetProcessingError):
+    """Exception for Huggingface API errors"""
+    def __init__(self, message, retriable=True):
+        super().__init__(message, ErrorCategory.HUGGINGFACE_API, retriable)
+```
+
+#### Error Handling Utilities
+```python
+def retry_operation(func, max_retries=3, initial_delay=1, backoff_factor=2, exceptions=(Exception,)):
+    """Retry an operation with exponential backoff"""
+    def wrapper(*args, **kwargs):
+        last_exception = None
+        delay = initial_delay
+
+        for attempt in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except exceptions as e:
+                last_exception = e
+
+                # Check if exception is retriable
+                if hasattr(e, 'retriable') and not e.retriable:
+                    logger.warning(f"Non-retriable error: {str(e)}")
+                    raise
+
+                # Log retry attempt
+                logger.warning(f"Retry {attempt+1}/{max_retries} after error: {str(e)}")
+
+                # Sleep with exponential backoff
+                time.sleep(delay)
+                delay *= backoff_factor
+
+        # If we get here, all retries failed
+        logger.error(f"All {max_retries} retries failed")
+        raise last_exception
+
+    return wrapper
+
+def handle_processing_error(error, sample_id=None, dataset_name=None):
+    """Handle processing error based on its category"""
+    # Log the error with context
+    context = f"Dataset: {dataset_name or 'unknown'}, Sample: {sample_id or 'unknown'}"
+
+    if isinstance(error, DatasetProcessingError):
+        logger.error(f"{error.category.value.upper()} ERROR - {context} - {str(error)}")
+    else:
+        logger.error(f"UNKNOWN ERROR - {context} - {str(error)}")
+
+    # Additional handling based on error category
+    if isinstance(error, SchemaValidationError) and hasattr(error, 'errors'):
+        for validation_error in error.errors:
+            logger.error(f"Validation error: {validation_error}")
+
+    # Return True if processing should continue, False if it should stop
+    if isinstance(error, (NetworkError, HuggingfaceAPIError)) and error.retriable:
+        return True  # Continue processing
+
+    return True  # Default: skip this sample but continue processing
+```
+
+## Acceptance Criteria
+- Base processor class is implemented with all required methods
+- Schema validation functions work correctly
+- Utility functions for schema conversion are implemented
+- Checkpoint integration is working
+- Error handling framework is in place
+
+## Dependencies
+- Task 1: Project Setup
+
+## Estimated Effort
+- 3-5 hours

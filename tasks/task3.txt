@@ -1,0 +1,69 @@
+# Task 3: GigaSpeech2 Dataset Processor
+
+## Objective
+Implement a processor for the GigaSpeech2 dataset, filter for Thai language content, and convert to the standard schema.
+
+## Detailed Steps
+
+### 1. Research GigaSpeech2 Dataset
+- Examine the dataset structure on GitHub (https://github.com/SpeechColab/GigaSpeech2)
+- Review the Huggingface dataset page (https://huggingface.co/datasets/speechcolab/gigaspeech2)
+- Identify how to filter for Thai language content
+- Understand the dataset's schema and audio format
+
+### 2. Implement GigaSpeech2 Processor Class
+- Create a new class that inherits from BaseProcessor
+- Implement all required methods:
+  ```python
+  class GigaSpeech2Processor(BaseProcessor):
+      def __init__(self, config):
+          super().__init__(config)
+          # Initialize dataset-specific settings
+          
+      def process(self, checkpoint=None):
+          # Load dataset
+          # Filter for Thai content
+          # Convert to standard schema
+          # Yield processed samples
+          
+      def get_dataset_info(self):
+          # Return dataset information
+          
+      def estimate_size(self):
+          # Estimate dataset size
+  ```
+
+### 3. Implement Thai Language Filtering
+- Identify the language field in the GigaSpeech2 dataset
+- Filter for entries where language is Thai
+- Log statistics about filtered data
+
+### 4. Implement Schema Conversion
+- Map GigaSpeech2 fields to standard schema
+- Generate sequential IDs (S1, S2, ...)
+- Extract audio data and calculate length
+- Extract transcript
+
+### 5. Implement Streaming Processing
+- Process the dataset in a streaming fashion to minimize memory usage
+- Implement checkpointing for long-running processing
+- Handle potential errors during processing
+
+### 6. Add Logging and Progress Tracking
+- Log detailed information about processing steps
+- Track and report progress
+- Log statistics about processed data
+
+## Acceptance Criteria
+- GigaSpeech2Processor successfully filters for Thai language content
+- Processor correctly converts to the standard schema
+- Processing works in a streaming fashion
+- Checkpointing allows resuming from interruptions
+- Detailed logs are generated during processing
+
+## Dependencies
+- Task 1: Project Setup
+- Task 2: Dataset Processor Interface
+
+## Estimated Effort
+- 5-7 hours

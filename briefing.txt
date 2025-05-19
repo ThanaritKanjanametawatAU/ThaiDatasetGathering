@@ -1,0 +1,14 @@
+I want to gather Thai Audio Dataset from many sources and combine them into one huggingface dataset Thanarit/Thai-Voice with the following schema
+ID: S1
+Language: th
+audio: audio file
+transcript:  transcript of the audio if any, else
+length: length of the audio
+Right now I want to combine 4 sources of dataset (make sure to make it modular and possible to write a python file to define logic for each dataset since there would be more in the future). The code should work so that there are 4 different files to process each dataset differently. the datasets I want are
+- https://github.com/SpeechColab/GigaSpeech2 (Only for Thai refined)
+- https://huggingface.co/datasets/Porameht/processed-voice-th-169k
+- https://github.com/vistec-AI/commonvoice-th
+
+The code should work so that it support pushing override and incremental appending, an option to append only one dataset to existing one.
+Start with folder initialization. Look for the best practice to optimize and organize this project's folder.
+Then work toward adding each dataset processing features incrementaly.
