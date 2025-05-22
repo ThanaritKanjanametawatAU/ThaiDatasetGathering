@@ -49,6 +49,12 @@ A modular system to gather Thai audio data from multiple sources and combine the
 ### Basic Usage
 
 ```bash
+# Create new Conda Env
+conda create -n thaidataset python=3.10
+
+# Always activate the env
+conda activate thaidataset
+
 # Process all datasets and create a fresh dataset
 python main.py --fresh --all
 

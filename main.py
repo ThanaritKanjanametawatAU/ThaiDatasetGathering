@@ -48,6 +48,10 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument("--sample", action="store_true", help="Process only a small sample from each dataset")
     parser.add_argument("--sample-size", type=int, default=5, help="Number of samples to process in sample mode (default: 5)")
+    parser.add_argument("--sample-archives", type=int, default=1, help="Number of archive files to download in sample mode (default: 1)")
+    parser.add_argument("--chunk-size", type=int, default=10000, help="Number of samples per chunk in full processing mode (default: 10000)")
+    parser.add_argument("--max-cache-gb", type=float, default=100.0, help="Maximum cache size in GB (default: 100)")
+    parser.add_argument("--clear-cache", action="store_true", help="Clear cache before processing")
 
     args = parser.parse_args()
 
@@ -116,6 +120,16 @@ def create_processor(dataset_name: str, config: Dict[str, Any]) -> BaseProcessor
     # Merge dataset config with global config
     merged_config = {**config, **dataset_config}
 
+    # Handle cache clearing if requested
+    if config.get("clear_cache", False):
+        from utils.cache import CacheManager
+        cache_dir = os.path.join(config.get("cache_dir", "./cache"), dataset_name)
+        cache_manager = CacheManager(cache_dir, config.get("max_cache_gb", 100.0))
+        if cache_manager.clear_cache():
+            logger.info(f"Cache cleared for {dataset_name}")
+        else:
+            logger.warning(f"Failed to clear cache for {dataset_name}")
+
     return processor_class(merged_config)
 
 def get_datasets_to_process(args: argparse.Namespace) -> List[str]:
@@ -160,7 +174,8 @@ def process_dataset(
     processor: BaseProcessor,
     checkpoint_file: Optional[str] = None,
     sample_mode: bool = False,
-    sample_size: int = 5
+    sample_size: int = 5,
+    sample_archives: int = 1
 ) -> List[Dict[str, Any]]:
     """
     Process a dataset using the specified processor.
@@ -176,15 +191,19 @@ def process_dataset(
     """
     logger.info(f"Processing dataset: {processor.name}")
 
-    # Get dataset info
-    dataset_info = processor.get_dataset_info()
-    logger.info(f"Dataset info: {dataset_info}")
+    # Get dataset info only if not in sample mode (to avoid downloading full dataset)
+    if not sample_mode:
+        dataset_info = processor.get_dataset_info()
+        logger.info(f"Dataset info: {dataset_info}")
+    else:
+        logger.info(f"Skipping dataset info in sample mode to avoid full download")
 
     # Process dataset
     samples = list(processor.process(
         checkpoint=checkpoint_file,
         sample_mode=sample_mode,
-        sample_size=sample_size
+        sample_size=sample_size,
+        sample_archives=sample_archives
     ))
 
     logger.info(f"Processed {len(samples)} samples from {processor.name}")
@@ -251,18 +270,24 @@ def main() -> int:
             # Get checkpoint file
             checkpoint_file = get_checkpoint_file(args, dataset_name)
 
-            # Create processor
-            processor = create_processor(dataset_name, {
+            # Create processor with enhanced config
+            processor_config = {
                 "checkpoint_dir": CHECKPOINT_DIR,
-                "log_dir": LOG_DIR
-            })
+                "log_dir": LOG_DIR,
+                "cache_dir": "./cache",
+                "chunk_size": args.chunk_size,
+                "max_cache_gb": args.max_cache_gb,
+                "clear_cache": args.clear_cache
+            }
+            processor = create_processor(dataset_name, processor_config)
 
             # Process dataset
             samples = process_dataset(
                 processor,
                 checkpoint_file,
                 sample_mode=args.sample,
-                sample_size=args.sample_size
+                sample_size=args.sample_size,
+                sample_archives=getattr(args, 'sample_archives', 1)
             )
 
             # Store processed samples

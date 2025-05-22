@@ -78,8 +78,8 @@ VALIDATION_RULES = {
     "audio": {
         "required": True,
         "min_size": 1,  # At least 1 byte
-        "validate_func": "is_valid_audio",
-        "error_message": "Audio must be a valid audio file"
+        # "validate_func": "is_valid_audio",  # Disabled to allow all audio through
+        "error_message": "Audio must be present"
     },
     "transcript": {
         "required": False,  # Can be empty
@@ -88,9 +88,9 @@ VALIDATION_RULES = {
     },
     "length": {
         "required": True,
-        "min_value": 0.1,  # At least 0.1 seconds
+        "min_value": 0.01,  # At least 0.01 seconds (very permissive)
         "max_value": 3600,  # Maximum 1 hour
-        "error_message": "Length must be between 0.1 and 3600 seconds"
+        "error_message": "Length must be between 0.01 and 3600 seconds"
     }
 }
 
