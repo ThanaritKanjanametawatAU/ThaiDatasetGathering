@@ -77,7 +77,13 @@ def get_processor_class(processor_class_name: str) -> type:
         type: Processor class
     """
     try:
-        module_name = f"processors.{processor_class_name.lower()}"
+        # Extract the base name without 'Processor' suffix
+        if processor_class_name.endswith('Processor'):
+            base_name = processor_class_name[:-9].lower()
+        else:
+            base_name = processor_class_name.lower()
+
+        module_name = f"processors.{base_name}"
         module = importlib.import_module(module_name)
         return getattr(module, processor_class_name)
     except (ImportError, AttributeError) as e:
