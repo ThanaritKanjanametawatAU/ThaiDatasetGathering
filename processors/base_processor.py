@@ -10,9 +10,9 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, Iterator, Union, Tuple
 import time
 
-from utils.audio import is_valid_audio, get_audio_length
+from utils.audio import is_valid_audio, get_audio_length, standardize_audio, get_audio_info
 from utils.logging import ProgressTracker, ProcessingLogger
-from config import SCHEMA, VALIDATION_RULES, ErrorCategory
+from config import SCHEMA, VALIDATION_RULES, ErrorCategory, AUDIO_CONFIG
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -60,6 +60,11 @@ class BaseProcessor(ABC):
         self.name = config.get("name", self.__class__.__name__)
         self.checkpoint_dir = config.get("checkpoint_dir", "checkpoints")
         self.log_dir = config.get("log_dir", "logs")
+
+        # Audio configuration - merge with global config, prioritizing processor-specific config
+        self.audio_config = {**AUDIO_CONFIG}
+        if "audio_config" in config:
+            self.audio_config.update(config["audio_config"])
 
         # Create checkpoint directory
         os.makedirs(self.checkpoint_dir, exist_ok=True)
@@ -169,6 +174,59 @@ class BaseProcessor(ABC):
                     errors.append(f"{rules.get('error_message', f'Invalid audio data')}")
 
         return errors
+
+    def preprocess_audio(self, audio_data: bytes, sample_id: str = "unknown") -> bytes:
+        """
+        Apply audio preprocessing and standardization.
+        
+        Args:
+            audio_data: Raw audio data as bytes
+            sample_id: Sample identifier for logging
+            
+        Returns:
+            bytes: Processed audio data
+        """
+        # Skip preprocessing if disabled
+        if not self.audio_config.get("enable_standardization", True):
+            self.logger.debug(f"Audio standardization disabled for {sample_id}")
+            return audio_data
+            
+        try:
+            self.logger.debug(f"Applying audio standardization for {sample_id}")
+            
+            # Log original audio info
+            original_info = get_audio_info(audio_data)
+            if original_info:
+                self.logger.debug(f"Original audio - SR: {original_info['sample_rate']}Hz, "
+                                f"Length: {original_info['length']:.2f}s, "
+                                f"dB: {original_info['db_level']:.1f}dB")
+            
+            # Apply standardization
+            standardized_audio = standardize_audio(
+                audio_data,
+                target_sample_rate=self.audio_config.get("target_sample_rate", 16000),
+                target_channels=self.audio_config.get("target_channels", 1),
+                normalize_volume=self.audio_config.get("normalize_volume", True),
+                target_db=self.audio_config.get("target_db", -20.0)
+            )
+            
+            if standardized_audio is not None:
+                self.logger.debug("Audio standardization successful")
+                
+                # Log standardized audio info
+                standardized_info = get_audio_info(standardized_audio)
+                if standardized_info:
+                    self.logger.debug(f"Standardized audio - SR: {standardized_info['sample_rate']}Hz, "
+                                    f"Length: {standardized_info['length']:.2f}s, "
+                                    f"dB: {standardized_info['db_level']:.1f}dB")
+                return standardized_audio
+            else:
+                self.logger.warning(f"Audio standardization failed for {sample_id}, using original audio")
+                return audio_data
+                
+        except Exception as e:
+            self.logger.error(f"Error during audio preprocessing for {sample_id}: {str(e)}")
+            return audio_data
 
     def save_checkpoint(self, checkpoint_data: Dict[str, Any], checkpoint_file: Optional[str] = None) -> str:
         """

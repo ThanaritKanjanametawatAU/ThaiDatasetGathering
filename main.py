@@ -52,6 +52,12 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--chunk-size", type=int, default=10000, help="Number of samples per chunk in full processing mode (default: 10000)")
     parser.add_argument("--max-cache-gb", type=float, default=100.0, help="Maximum cache size in GB (default: 100)")
     parser.add_argument("--clear-cache", action="store_true", help="Clear cache before processing")
+    
+    # Audio processing options
+    parser.add_argument("--no-standardization", action="store_true", help="Disable audio standardization (keep original format)")
+    parser.add_argument("--sample-rate", type=int, default=16000, help="Target sample rate in Hz (default: 16000)")
+    parser.add_argument("--target-db", type=float, default=-20.0, help="Target volume level in dB (default: -20.0)")
+    parser.add_argument("--no-volume-norm", action="store_true", help="Disable volume normalization")
 
     args = parser.parse_args()
 
@@ -277,7 +283,17 @@ def main() -> int:
                 "cache_dir": "./cache",
                 "chunk_size": args.chunk_size,
                 "max_cache_gb": args.max_cache_gb,
-                "clear_cache": args.clear_cache
+                "clear_cache": args.clear_cache,
+                # Audio processing configuration
+                "audio_config": {
+                    "enable_standardization": not args.no_standardization,
+                    "target_sample_rate": args.sample_rate,
+                    "target_channels": 1,
+                    "normalize_volume": not args.no_volume_norm,
+                    "target_db": args.target_db,
+                    "target_format": "wav",
+                    "trim_silence": True
+                }
             }
             processor = create_processor(dataset_name, processor_config)
 

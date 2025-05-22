@@ -98,7 +98,11 @@ VALIDATION_RULES = {
 AUDIO_CONFIG = {
     "target_format": "wav",
     "target_sample_rate": 16000,
-    "target_channels": 1
+    "target_channels": 1,
+    "normalize_volume": True,
+    "target_db": -20.0,  # Target volume level in dB
+    "trim_silence": True,
+    "enable_standardization": True  # Master switch for audio standardization
 }
 
 # Logging configuration

@@ -195,6 +195,9 @@ class GigaSpeech2Processor(BaseProcessor):
         if not isinstance(audio_data, (bytes, bytearray)):
             raise ValidationError(f"Audio data must be bytes, got {type(audio_data)}")
 
+        # Apply audio preprocessing through base processor
+        audio_data = self.preprocess_audio(audio_data, id_str)
+
         # Calculate length
         length = get_audio_length(audio_data)
         if length is None:
