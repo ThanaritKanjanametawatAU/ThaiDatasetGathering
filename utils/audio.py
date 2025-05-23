@@ -4,7 +4,7 @@ Audio processing utilities for the Thai Audio Dataset Collection project.
 
 import io
 import logging
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict, Any
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -17,24 +17,35 @@ except ImportError:
     logger.error("Required audio libraries not installed. Please install librosa, soundfile, and numpy.")
     raise
 
-def is_valid_audio(audio_data: bytes) -> bool:
+def is_valid_audio(audio_data: Union[bytes, dict]) -> bool:
     """
-    Check if the provided bytes contain valid audio data.
+    Check if the provided audio data is valid.
     
     Args:
-        audio_data: Audio data as bytes
+        audio_data: Audio data as bytes or HuggingFace audio dict
         
     Returns:
         bool: True if valid audio, False otherwise
     """
-    if not audio_data or len(audio_data) < 10:  # Arbitrary minimum size
-        return False
-    
     try:
-        # Try to load with librosa
-        audio_file = io.BytesIO(audio_data)
-        _, sr = librosa.load(audio_file, sr=None, duration=0.1)
-        return sr > 0
+        if isinstance(audio_data, dict):
+            # HuggingFace audio format
+            if "array" in audio_data and "sampling_rate" in audio_data:
+                array = audio_data["array"]
+                sampling_rate = audio_data["sampling_rate"]
+                return len(array) > 0 and sampling_rate > 0
+            return False
+        elif isinstance(audio_data, (bytes, bytearray)):
+            # Raw bytes format
+            if not audio_data or len(audio_data) < 10:  # Arbitrary minimum size
+                return False
+            
+            # Try to load with librosa
+            audio_file = io.BytesIO(audio_data)
+            _, sr = librosa.load(audio_file, sr=None, duration=0.1)
+            return sr > 0
+        else:
+            return False
     except Exception as e:
         logger.debug(f"Audio validation error: {str(e)}")
         return False
@@ -77,20 +88,31 @@ def convert_audio_format(
         logger.error(f"Audio conversion error: {str(e)}")
         return None
 
-def get_audio_length(audio_data: bytes) -> Optional[float]:
+def get_audio_length(audio_data: Union[bytes, dict]) -> Optional[float]:
     """
     Calculate the length of an audio file in seconds.
     
     Args:
-        audio_data: Audio data as bytes
+        audio_data: Audio data as bytes or HuggingFace audio dict
         
     Returns:
         float: Length in seconds or None if calculation failed
     """
     try:
-        audio_file = io.BytesIO(audio_data)
-        audio, sr = librosa.load(audio_file, sr=None)
-        return len(audio) / sr
+        if isinstance(audio_data, dict):
+            # HuggingFace audio format
+            if "array" in audio_data and "sampling_rate" in audio_data:
+                array = audio_data["array"]
+                sampling_rate = audio_data["sampling_rate"]
+                return len(array) / sampling_rate
+            return None
+        elif isinstance(audio_data, (bytes, bytearray)):
+            # Raw bytes format
+            audio_file = io.BytesIO(audio_data)
+            audio, sr = librosa.load(audio_file, sr=None)
+            return len(audio) / sr
+        else:
+            return None
     except Exception as e:
         logger.error(f"Audio length calculation error: {str(e)}")
         return None
@@ -184,29 +206,49 @@ def standardize_audio(audio_data: bytes, target_sample_rate: int = 16000,
         logger.error(f"Audio standardization error: {str(e)}")
         return None
 
-def get_audio_info(audio_data: bytes) -> Optional[dict]:
+def get_audio_info(audio_data: Union[bytes, dict]) -> Optional[dict]:
     """
     Get information about an audio file.
     
     Args:
-        audio_data: Audio data as bytes
+        audio_data: Audio data as bytes or HuggingFace audio dict
         
     Returns:
         dict: Audio information or None if extraction failed
     """
     try:
-        audio_file = io.BytesIO(audio_data)
-        audio, sr = librosa.load(audio_file, sr=None)
-        
-        return {
-            "sample_rate": sr,
-            "channels": 1 if audio.ndim == 1 else audio.shape[1],
-            "length": len(audio) / sr,
-            "format": "wav",  # Default format after librosa loading
-            "rms_amplitude": float(np.sqrt(np.mean(audio**2))),
-            "max_amplitude": float(np.max(np.abs(audio))),
-            "db_level": float(20 * np.log10(np.sqrt(np.mean(audio**2)) + 1e-8))
-        }
+        if isinstance(audio_data, dict):
+            # HuggingFace audio format
+            if "array" in audio_data and "sampling_rate" in audio_data:
+                audio = np.array(audio_data["array"])
+                sr = audio_data["sampling_rate"]
+                
+                return {
+                    "sample_rate": sr,
+                    "channels": 1 if audio.ndim == 1 else audio.shape[1],
+                    "length": len(audio) / sr,
+                    "format": "wav",  # Default format
+                    "rms_amplitude": float(np.sqrt(np.mean(audio**2))),
+                    "max_amplitude": float(np.max(np.abs(audio))),
+                    "db_level": float(20 * np.log10(np.sqrt(np.mean(audio**2)) + 1e-8))
+                }
+            return None
+        elif isinstance(audio_data, (bytes, bytearray)):
+            # Raw bytes format
+            audio_file = io.BytesIO(audio_data)
+            audio, sr = librosa.load(audio_file, sr=None)
+            
+            return {
+                "sample_rate": sr,
+                "channels": 1 if audio.ndim == 1 else audio.shape[1],
+                "length": len(audio) / sr,
+                "format": "wav",  # Default format after librosa loading
+                "rms_amplitude": float(np.sqrt(np.mean(audio**2))),
+                "max_amplitude": float(np.max(np.abs(audio))),
+                "db_level": float(20 * np.log10(np.sqrt(np.mean(audio**2)) + 1e-8))
+            }
+        else:
+            return None
     except Exception as e:
         logger.error(f"Audio info extraction error: {str(e)}")
         return None

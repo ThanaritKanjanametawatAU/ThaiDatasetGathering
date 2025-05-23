@@ -11,7 +11,7 @@ import json
 logger = logging.getLogger(__name__)
 
 try:
-    from datasets import Dataset, Audio, load_dataset
+    from datasets import Dataset, Audio, load_dataset, Features, Value
     from huggingface_hub import HfApi, login
 except ImportError:
     logger.error("Required Huggingface libraries not installed. Please install datasets and huggingface_hub.")
@@ -86,16 +86,18 @@ def create_hf_dataset(
         
         # Create default features if not provided
         if features is None:
-            # Get keys from first sample
-            keys = samples_list[0].keys()
-            features = {key: "string" for key in keys}
-            
-            # Set audio feature type
-            if "audio" in features:
-                features["audio"] = Audio()
+            # Define features explicitly to ensure proper Audio type
+            features = Features({
+                "ID": Value("string"),
+                "Language": Value("string"), 
+                "audio": Audio(sampling_rate=16000),  # Explicitly set audio feature
+                "transcript": Value("string"),
+                "length": Value("float32")
+            })
         
-        # Create dataset
-        dataset = Dataset.from_dict({key: [sample.get(key) for sample in samples_list] for key in features.keys()})
+        # Create dataset with explicit features
+        data_dict = {key: [sample.get(key) for sample in samples_list] for key in ["ID", "Language", "audio", "transcript", "length"]}
+        dataset = Dataset.from_dict(data_dict, features=features)
         
         logger.info(f"Created dataset with {len(dataset)} samples")
         return dataset

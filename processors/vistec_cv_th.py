@@ -310,15 +310,16 @@ class VistecCommonVoiceTHProcessor(BaseProcessor):
         if not audio_data:
             raise ValidationError("Empty audio file")
 
-        # Calculate length
-        length = get_audio_length(audio_data)
+        # Apply audio preprocessing through base processor
+        audio_data = self.preprocess_audio(audio_data, id_str)
+
+        # Convert audio bytes to HuggingFace Audio format for proper preview functionality
+        audio_dict = self.create_hf_audio_format(audio_data, id_str)
+
+        # Calculate length from the HuggingFace format (more consistent)
+        length = get_audio_length(audio_dict)
         if length is None:
-            # Try using soundfile directly
-            try:
-                info = sf.info(audio_path)
-                length = info.duration
-            except Exception as e:
-                raise ValidationError(f"Failed to calculate audio length: {str(e)}")
+            raise ValidationError("Failed to calculate audio length")
 
         # Get transcript
         transcript = row.get("sentence", "")
@@ -327,7 +328,7 @@ class VistecCommonVoiceTHProcessor(BaseProcessor):
         return {
             "ID": id_str,
             "Language": "th",
-            "audio": audio_data,
+            "audio": audio_dict,
             "transcript": transcript,
             "length": length
         }

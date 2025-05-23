@@ -172,12 +172,16 @@ class ProcessedVoiceTHProcessor(BaseProcessor):
         if not audio_data:
             raise ValidationError("Missing audio data")
 
-        # Calculate length if not provided
-        length = sample.get("audio", {}).get("duration")
+        # Apply audio preprocessing through base processor
+        audio_data = self.preprocess_audio(audio_data, id_str)
+
+        # Convert audio bytes to HuggingFace Audio format for proper preview functionality
+        audio_dict = self.create_hf_audio_format(audio_data, id_str)
+
+        # Calculate length from the HuggingFace format (more consistent)
+        length = get_audio_length(audio_dict)
         if length is None:
-            length = get_audio_length(audio_data)
-            if length is None:
-                raise ValidationError("Failed to calculate audio length")
+            raise ValidationError("Failed to calculate audio length")
 
         # Get transcript
         transcript = sample.get("text", "")
@@ -186,7 +190,7 @@ class ProcessedVoiceTHProcessor(BaseProcessor):
         return {
             "ID": id_str,
             "Language": "th",
-            "audio": audio_data,
+            "audio": audio_dict,
             "transcript": transcript,
             "length": length
         }

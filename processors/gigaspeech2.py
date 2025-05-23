@@ -198,8 +198,11 @@ class GigaSpeech2Processor(BaseProcessor):
         # Apply audio preprocessing through base processor
         audio_data = self.preprocess_audio(audio_data, id_str)
 
-        # Calculate length
-        length = get_audio_length(audio_data)
+        # Convert audio bytes to HuggingFace Audio format for proper preview functionality
+        audio_dict = self.create_hf_audio_format(audio_data, id_str)
+
+        # Calculate length from the HuggingFace format (more consistent)
+        length = get_audio_length(audio_dict)
         if length is None:
             raise ValidationError("Failed to calculate audio length")
 
@@ -210,7 +213,7 @@ class GigaSpeech2Processor(BaseProcessor):
         return {
             "ID": id_str,
             "Language": "th",
-            "audio": audio_data,
+            "audio": audio_dict,
             "transcript": transcript,
             "length": length
         }

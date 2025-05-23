@@ -57,7 +57,7 @@ TARGET_DATASET = {
 SCHEMA = {
     "ID": str,          # Sequential ID (S1, S2, ...)
     "Language": str,    # Always "th" for Thai
-    "audio": bytes,     # Audio file data
+    "audio": dict,      # Audio data in HuggingFace format (array, sampling_rate, path)
     "transcript": str,  # Transcript text
     "length": float,    # Audio length in seconds
 }
@@ -77,9 +77,8 @@ VALIDATION_RULES = {
     },
     "audio": {
         "required": True,
-        "min_size": 1,  # At least 1 byte
-        # "validate_func": "is_valid_audio",  # Disabled to allow all audio through
-        "error_message": "Audio must be present"
+        # Audio is now a dict with array, sampling_rate, and path keys
+        "error_message": "Audio must be present and in correct format"
     },
     "transcript": {
         "required": False,  # Can be empty

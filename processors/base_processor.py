@@ -228,6 +228,46 @@ class BaseProcessor(ABC):
             self.logger.error(f"Error during audio preprocessing for {sample_id}: {str(e)}")
             return audio_data
 
+    def create_hf_audio_format(self, audio_data: bytes, sample_id: str = "unknown") -> Dict[str, Any]:
+        """
+        Convert audio bytes to HuggingFace Audio-compatible format.
+        
+        Args:
+            audio_data: Raw audio data as bytes
+            sample_id: Sample identifier for path generation
+            
+        Returns:
+            dict: Audio data in HuggingFace format with array, sampling_rate, and path
+        """
+        try:
+            import soundfile as sf
+            import io
+            import numpy as np
+            
+            # Read audio data to get array and sampling rate
+            buffer = io.BytesIO(audio_data)
+            array, sampling_rate = sf.read(buffer)
+            
+            # Ensure array is float32 for consistency
+            if array.dtype != np.float32:
+                array = array.astype(np.float32)
+            
+            # Create HuggingFace Audio-compatible format
+            return {
+                "array": array,
+                "sampling_rate": int(sampling_rate),
+                "path": f"{sample_id}.wav"  # Virtual path for identification
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to convert audio to HuggingFace format for {sample_id}: {str(e)}")
+            # Fallback: return a minimal format that won't break the dataset
+            return {
+                "array": [],
+                "sampling_rate": 16000,
+                "path": f"{sample_id}.wav"
+            }
+
     def save_checkpoint(self, checkpoint_data: Dict[str, Any], checkpoint_file: Optional[str] = None) -> str:
         """
         Save checkpoint data to file.
