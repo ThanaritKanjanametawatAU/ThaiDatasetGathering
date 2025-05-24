@@ -25,7 +25,7 @@ def test_streaming_sample():
     print("=" * 80)
     
     # Test with each dataset individually
-    datasets = ["GigaSpeech2", "MozillaCV", "ProcessedVoiceTH", "VistecCommonVoiceTH"]
+    datasets = ["GigaSpeech2", "MozillaCV", "ProcessedVoiceTH"]
     
     for dataset in datasets:
         print(f"\n{'='*60}")

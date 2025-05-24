@@ -31,12 +31,6 @@ DATASET_CONFIG = {
         "description": "Processed Voice TH dataset",
         "processor_class": "ProcessedVoiceTHProcessor"
     },
-    "VistecCommonVoiceTH": {
-        "name": "VistecCommonVoiceTH",
-        "source": "vistec-AI/commonvoice-th",
-        "description": "VISTEC Common Voice TH dataset",
-        "processor_class": "VistecCommonVoiceTHProcessor"
-    },
     "MozillaCommonVoice": {
         "name": "MozillaCommonVoice",
         "source": "mozilla-foundation/common_voice_11_0",

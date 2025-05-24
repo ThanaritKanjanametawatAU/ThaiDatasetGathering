@@ -74,7 +74,6 @@ ThaiDatasetGathering/
 │   ├── base_processor.py    # Base class for dataset processors
 │   ├── gigaspeech2.py       # GigaSpeech2 processor
 │   ├── processed_voice_th.py # Processed Voice TH processor
-│   ├── vistec_cv_th.py      # VISTEC Common Voice TH processor
 │   └── mozilla_cv.py        # Mozilla Common Voice processor
 ├── tests/
 │   ├── test_audio.py        # Tests for audio utilities

@@ -14,7 +14,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from processors.base_processor import BaseProcessor
 from processors.gigaspeech2 import GigaSpeech2Processor
 from processors.processed_voice_th import ProcessedVoiceTHProcessor
-from processors.vistec_cv_th import VistecCommonVoiceTHProcessor
 from processors.mozilla_cv import MozillaCommonVoiceProcessor
 
 class TestSampleMode(unittest.TestCase):
@@ -112,44 +111,6 @@ class TestSampleMode(unittest.TestCase):
         self.assertGreaterEqual(len(samples), 0)  # We should get some samples
         mock_dataset.select.assert_called_once()  # select was called for sampling
 
-    def test_vistec_cv_th_sample_mode(self):
-        """Test VistecCommonVoiceTHProcessor sample mode."""
-        # Create processor
-        processor = VistecCommonVoiceTHProcessor({**self.config, "name": "VistecCommonVoiceTH"})
-
-        # Mock dataset methods
-        processor._ensure_dataset_available = MagicMock()
-        processor._find_csv_files = MagicMock(return_value=[os.path.join(self.temp_dir.name, "test.csv")])
-        processor._find_audio_files = MagicMock(return_value=[
-            os.path.join(self.temp_dir.name, "1.mp3"),
-            os.path.join(self.temp_dir.name, "2.mp3")
-        ])
-        processor._convert_sample = MagicMock(return_value={
-            "ID": "S1",
-            "Language": "th",
-            "audio": b'test',
-            "transcript": "test",
-            "length": 1.0
-        })
-
-        # Create a test CSV file
-        os.makedirs(os.path.dirname(processor._find_csv_files.return_value[0]), exist_ok=True)
-        with open(processor._find_csv_files.return_value[0], 'w') as f:
-            f.write("path,sentence\n1.mp3,test1\n2.mp3,test2\n3.mp3,test3\n")
-
-        # Mock open function to return dummy audio data
-        with patch('builtins.open', create=True) as mock_open:
-            mock_file = MagicMock()
-            mock_file.read.return_value = b'test'
-            mock_open.return_value.__enter__.return_value = mock_file
-
-            # Process in sample mode
-            with patch('processors.base_processor.is_valid_audio', return_value=True):
-                with patch('processors.vistec_cv_th.get_audio_length', return_value=1.0):
-                    samples = list(processor.process(sample_mode=True, sample_size=2))
-
-        # Check results
-        self.assertGreaterEqual(len(samples), 0)  # We should get some samples
 
 if __name__ == '__main__':
     unittest.main()

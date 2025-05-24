@@ -20,10 +20,7 @@ A modular system to gather Thai audio data from multiple sources and combine the
 2. **Processed Voice TH** (Huggingface: Porameht/processed-voice-th-169k)
    - Source: https://huggingface.co/datasets/Porameht/processed-voice-th-169k
 
-3. **VISTEC Common Voice TH** (GitHub: vistec-AI/commonvoice-th)
-   - Source: https://github.com/vistec-AI/commonvoice-th
-
-4. **Mozilla Common Voice** (Huggingface: mozilla-foundation/common_voice_11_0) - Thai only
+3. **Mozilla Common Voice** (Huggingface: mozilla-foundation/common_voice_11_0) - Thai only
    - Source: https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0
    - Filter: Only Thai language content
 
@@ -67,7 +64,6 @@ python main.py --fresh --all --streaming --resume
 python main.py --fresh --all --streaming --streaming-batch-size 1000 --upload-batch-size 10000
 ```
 
-**Note**: VistecCommonVoiceTH is not available as a HuggingFace dataset and will be skipped in streaming mode. This dataset requires manual download from the [GitHub repository](https://github.com/vistec-AI/commonvoice-th) and can only be processed in non-streaming mode.
 
 ### Basic Usage (Cached Mode)
 
@@ -178,7 +174,6 @@ ThaiDatasetGathering/
 │   ├── base_processor.py    # Base class for dataset processors
 │   ├── gigaspeech2.py       # GigaSpeech2 processor
 │   ├── processed_voice_th.py # Processed Voice TH processor
-│   ├── vistec_cv_th.py      # VISTEC Common Voice TH processor
 │   └── mozilla_cv.py        # Mozilla Common Voice processor
 ├── tests/
 │   ├── __init__.py

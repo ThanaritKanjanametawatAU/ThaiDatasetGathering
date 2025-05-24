@@ -97,7 +97,6 @@ def get_processor_class(processor_class_name: str) -> type:
         module_mapping = {
             'GigaSpeech2Processor': 'gigaspeech2',
             'ProcessedVoiceTHProcessor': 'processed_voice_th',
-            'VistecCommonVoiceTHProcessor': 'vistec_cv_th',
             'MozillaCommonVoiceProcessor': 'mozilla_cv'
         }
         

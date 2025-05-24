@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 print("Testing all datasets in streaming mode...")
 
 # Test each dataset individually to isolate any issues
-datasets = ["ProcessedVoiceTH", "MozillaCommonVoice", "GigaSpeech2", "VistecCommonVoiceTH"]  # All datasets
+datasets = ["ProcessedVoiceTH", "MozillaCommonVoice", "GigaSpeech2"]  # All datasets
 
 for dataset in datasets:
     print(f"\n{'='*60}")
