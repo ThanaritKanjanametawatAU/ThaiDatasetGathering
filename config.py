@@ -54,6 +54,8 @@ SCHEMA = {
     "audio": dict,      # Audio data in HuggingFace format (array, sampling_rate, path)
     "transcript": str,  # Transcript text
     "length": float,    # Audio length in seconds
+    "dataset_name": str,        # Source dataset name (NEW)
+    "confidence_score": float,  # STT confidence score 0.0-1.0 (NEW)
 }
 
 # Validation rules
@@ -75,15 +77,27 @@ VALIDATION_RULES = {
         "error_message": "Audio must be present and in correct format"
     },
     "transcript": {
-        "required": False,  # Can be empty
+        "required": True,  # CHANGED: Now required (100% coverage)
+        "min_length": 1,   # Cannot be empty
         "max_length": 10000,  # Reasonable maximum length
-        "error_message": "Transcript exceeds maximum length"
+        "error_message": "Transcript must be non-empty and under 10000 characters"
     },
     "length": {
         "required": True,
         "min_value": 0.01,  # At least 0.01 seconds (very permissive)
         "max_value": 3600,  # Maximum 1 hour
         "error_message": "Length must be between 0.01 and 3600 seconds"
+    },
+    "dataset_name": {
+        "required": True,
+        "min_length": 1,
+        "error_message": "Dataset name must be provided"
+    },
+    "confidence_score": {
+        "required": True,
+        "min_value": 0.0,
+        "max_value": 1.0,
+        "error_message": "Confidence score must be between 0.0 and 1.0"
     }
 }
 
@@ -137,3 +151,14 @@ EXIT_CODES = {
 
 # Huggingface configuration
 HF_TOKEN_FILE = os.path.join(PROJECT_ROOT, "hf_token.txt")
+
+# STT Configuration
+STT_CONFIG = {
+    "enable_stt": True,  # Enable STT for missing transcripts
+    "stt_batch_size": 16,  # Batch size for STT processing
+    "primary_model": "airesearch/wav2vec2-large-xlsr-53-th",
+    "secondary_model": "openai/whisper-large-v3",
+    "fallback_transcript": "[INAUDIBLE]",  # Used when STT fails
+    "error_transcript": "[STT_ERROR]",     # Used when STT crashes
+    "no_audio_transcript": "[NO_AUDIO]",   # Used when audio is missing
+}

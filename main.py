@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional, Tuple
 
 from config import (
     DATASET_CONFIG, TARGET_DATASET, LOG_CONFIG, EXIT_CODES,
-    HF_TOKEN_FILE, CHECKPOINT_DIR, LOG_DIR, STREAMING_CONFIG
+    HF_TOKEN_FILE, CHECKPOINT_DIR, LOG_DIR, STREAMING_CONFIG, STT_CONFIG
 )
 from utils.logging import setup_logging
 from utils.huggingface import read_hf_token, authenticate_hf, create_hf_dataset, upload_dataset, get_last_id
@@ -64,6 +64,11 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--sample-rate", type=int, default=16000, help="Target sample rate in Hz (default: 16000)")
     parser.add_argument("--target-db", type=float, default=-20.0, help="Target volume level in dB (default: -20.0)")
     parser.add_argument("--no-volume-norm", action="store_true", help="Disable volume normalization")
+    
+    # STT options
+    parser.add_argument("--enable-stt", action="store_true", help="Enable STT for missing transcripts")
+    parser.add_argument("--stt-batch-size", type=int, default=16, help="Batch size for STT processing (default: 16)")
+    parser.add_argument("--no-stt", action="store_true", help="Explicitly disable STT (overrides config)")
 
     args = parser.parse_args()
 
@@ -220,12 +225,11 @@ def process_dataset(
     else:
         logger.info(f"Skipping dataset info in sample mode to avoid full download")
 
-    # Process dataset
-    samples = list(processor.process(
+    # Process dataset - use process_all_splits to combine all splits
+    samples = list(processor.process_all_splits(
         checkpoint=checkpoint_file,
         sample_mode=sample_mode,
-        sample_size=sample_size,
-        sample_archives=sample_archives
+        sample_size=sample_size
     ))
 
     logger.info(f"Processed {len(samples)} samples from {processor.name}")
@@ -320,7 +324,10 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                     "target_channels": 1,
                     "normalize_volume": not args.no_volume_norm,
                     "target_db": args.target_db,
-                }
+                },
+                "dataset_name": dataset_name,
+                "enable_stt": args.enable_stt if not args.no_stt else False,
+                "stt_batch_size": args.stt_batch_size
             }
             
             # Create processor
@@ -329,9 +336,9 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
             # Get checkpoint if resuming
             checkpoint_file = get_checkpoint_file(args, dataset_name) if args.resume else None
             
-            # Process in streaming mode
+            # Process all splits in streaming mode
             sample_count = 0
-            for sample in processor.process_streaming(
+            for sample in processor.process_all_splits(
                 checkpoint=checkpoint_file,
                 sample_mode=args.sample,
                 sample_size=args.sample_size
@@ -447,7 +454,11 @@ def main() -> int:
                     "target_db": args.target_db,
                     "target_format": "wav",
                     "trim_silence": True
-                }
+                },
+                # STT configuration
+                "dataset_name": dataset_name,
+                "enable_stt": args.enable_stt if not args.no_stt else False,
+                "stt_batch_size": args.stt_batch_size
             }
             processor = create_processor(dataset_name, processor_config)
 

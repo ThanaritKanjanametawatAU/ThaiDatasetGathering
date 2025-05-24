@@ -18,6 +18,14 @@ from config import SCHEMA, VALIDATION_RULES, ErrorCategory, AUDIO_CONFIG
 # Set up logger
 logger = logging.getLogger(__name__)
 
+# Import STT if available
+try:
+    from .stt.ensemble_stt import EnsembleSTT
+    STT_AVAILABLE = True
+except ImportError:
+    logger.warning("STT module not available. STT features will be disabled.")
+    STT_AVAILABLE = False
+
 class DatasetProcessingError(Exception):
     """Base exception for all dataset processing errors."""
 
@@ -62,6 +70,9 @@ class BaseProcessor(ABC):
         self.checkpoint_dir = config.get("checkpoint_dir", "checkpoints")
         self.log_dir = config.get("log_dir", "logs")
         
+        # Get dataset name from config
+        self.dataset_name = config.get("dataset_name", self.name)
+        
         # Streaming configuration
         self.streaming_mode = config.get("streaming", False)
         self.batch_size = config.get("batch_size", 1000)
@@ -88,6 +99,21 @@ class BaseProcessor(ABC):
         # Streaming checkpoint tracking
         self.streaming_checkpoint_file = None
         self.streaming_checkpoint_data = {}
+        
+        # STT configuration
+        self.enable_stt = config.get("enable_stt", False)
+        self.stt_batch_size = config.get("stt_batch_size", 16)
+        self.stt_pipeline = None
+        
+        # Initialize STT if enabled
+        if self.enable_stt and STT_AVAILABLE:
+            try:
+                self.logger.info("Initializing STT pipeline...")
+                self.stt_pipeline = EnsembleSTT()
+                self.logger.info("STT pipeline initialized successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize STT pipeline: {e}")
+                self.enable_stt = False
 
     @abstractmethod
     def process(self, checkpoint: Optional[str] = None, sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
@@ -138,6 +164,106 @@ class BaseProcessor(ABC):
             dict: Processed sample in standard schema
         """
         pass
+    
+    def get_available_splits(self) -> List[str]:
+        """
+        Get available splits for the dataset.
+        Override this method in subclasses to return actual splits.
+        
+        Returns:
+            list: List of available split names
+        """
+        # Default implementation - subclasses should override
+        return ["train"]
+    
+    def process_all_splits(self, checkpoint: Optional[str] = None, sample_mode: bool = False, 
+                          sample_size: int = 5) -> Iterator[Dict[str, Any]]:
+        """
+        Process all available splits and combine them into one stream.
+        
+        Args:
+            checkpoint: Path to checkpoint file (optional)
+            sample_mode: If True, only process a small sample of the dataset
+            sample_size: Number of samples to process in sample mode (distributed across splits)
+            
+        Yields:
+            dict: Processed sample in standard schema
+        """
+        available_splits = self.get_available_splits()
+        self.logger.info(f"Processing all splits: {available_splits}")
+        
+        # In sample mode, distribute sample size across splits
+        if sample_mode and len(available_splits) > 1:
+            samples_per_split = max(1, sample_size // len(available_splits))
+            remaining_samples = sample_size - (samples_per_split * len(available_splits))
+        else:
+            samples_per_split = sample_size
+            remaining_samples = 0
+            
+        total_samples_yielded = 0
+        
+        for i, split in enumerate(available_splits):
+            self.logger.info(f"Processing split: {split}")
+            
+            # Add extra samples to first split if needed
+            split_sample_size = samples_per_split + (remaining_samples if i == 0 else 0)
+            
+            # Override the process_streaming method to handle specific split
+            # This should be implemented in subclasses
+            split_samples_yielded = 0
+            
+            try:
+                # Process this split
+                for sample in self._process_single_split(split, checkpoint, sample_mode, split_sample_size):
+                    # Add metadata about original split (for internal tracking)
+                    original_split = split
+                    
+                    # Process with STT if enabled
+                    if self.enable_stt:
+                        sample = self.process_sample_with_stt(sample, total_samples_yielded)
+                    else:
+                        # Just add the required fields
+                        sample["dataset_name"] = self.dataset_name
+                        sample["confidence_score"] = 1.0 if sample.get("transcript", "").strip() else 0.0
+                        
+                    # Note: We don't add _original_split to the output as it's not in the schema
+                    yield sample
+                    
+                    split_samples_yielded += 1
+                    total_samples_yielded += 1
+                    
+                    # Check if we've reached sample limit
+                    if sample_mode and total_samples_yielded >= sample_size:
+                        self.logger.info(f"Reached sample limit of {sample_size}")
+                        return
+                        
+            except Exception as e:
+                self.logger.error(f"Error processing split {split}: {e}")
+                if not sample_mode:
+                    raise
+                    
+        self.logger.info(f"Processed {total_samples_yielded} samples from all splits")
+    
+    def _process_single_split(self, split: str, checkpoint: Optional[str] = None, 
+                             sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
+        """
+        Process a single split. Override in subclasses to implement split-specific logic.
+        
+        Args:
+            split: Split name to process
+            checkpoint: Path to checkpoint file (optional)
+            sample_mode: If True, only process a small sample
+            sample_size: Number of samples to process
+            
+        Yields:
+            dict: Processed sample in standard schema
+        """
+        # Default implementation - use existing process_streaming
+        # Subclasses should override to handle split parameter
+        if self.streaming_mode:
+            yield from self.process_streaming(checkpoint, sample_mode, sample_size)
+        else:
+            yield from self.process(checkpoint, sample_mode, sample_size)
 
     def validate_sample(self, sample: Dict[str, Any]) -> List[str]:
         """
@@ -527,8 +653,174 @@ class BaseProcessor(ABC):
             "Language": language,
             "audio": audio_hf,
             "transcript": transcript,
-            "length": length
+            "length": length,
+            "dataset_name": self.dataset_name,  # NEW FIELD
+            "confidence_score": 1.0  # Will be updated by process_sample_with_stt
         }
+    
+    def process_sample_with_stt(self, sample: Dict[str, Any], sample_idx: int) -> Dict[str, Any]:
+        """
+        Process a sample with STT if needed to ensure 100% transcript coverage.
+        
+        Args:
+            sample: Sample to process
+            sample_idx: Sample index for logging
+            
+        Returns:
+            dict: Processed sample with guaranteed transcript
+        """
+        # Add dataset name
+        sample["dataset_name"] = self.dataset_name
+        
+        # Check if transcript exists and is non-empty
+        transcript = sample.get("transcript", "").strip()
+        
+        if transcript:
+            # Existing transcript - set confidence to 1.0
+            sample["confidence_score"] = 1.0
+            return sample
+            
+        # No transcript - need STT
+        if not self.enable_stt or not self.stt_pipeline:
+            # STT not available - use fallback
+            self.logger.warning(f"No transcript for sample {sample_idx} and STT not available")
+            sample["transcript"] = "[NO_TRANSCRIPT]"
+            sample["confidence_score"] = 0.0
+            return sample
+            
+        # Extract audio data for STT
+        try:
+            audio_bytes = self._extract_audio_bytes(sample.get("audio"))
+            if not audio_bytes:
+                self.logger.error(f"No audio data for sample {sample_idx}")
+                sample["transcript"] = "[NO_AUDIO]"
+                sample["confidence_score"] = 0.0
+                return sample
+                
+            # Convert to numpy array for STT
+            import soundfile as sf
+            import io
+            import numpy as np
+            
+            buffer = io.BytesIO(audio_bytes)
+            audio_array, sr = sf.read(buffer)
+            
+            # Ensure 16kHz
+            if sr != 16000:
+                import librosa
+                audio_array = librosa.resample(audio_array, orig_sr=sr, target_sr=16000)
+                
+            # Run STT
+            transcript, confidence = self.stt_pipeline.transcribe(audio_array)
+            
+            # Ensure non-empty transcript
+            if not transcript.strip():
+                # Try fallback
+                transcript, confidence = self.stt_pipeline.transcribe_with_fallback(audio_array)
+                
+            sample["transcript"] = transcript
+            sample["confidence_score"] = confidence
+            
+            self.logger.info(f"STT generated transcript for sample {sample_idx}: '{transcript[:50]}...' (conf: {confidence:.3f})")
+            
+        except Exception as e:
+            self.logger.error(f"STT failed for sample {sample_idx}: {e}")
+            sample["transcript"] = "[STT_ERROR]"
+            sample["confidence_score"] = 0.0
+            
+        return sample
+    
+    def process_batch_with_stt(self, batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Process a batch of samples with STT for efficiency.
+        
+        Args:
+            batch: List of samples to process
+            
+        Returns:
+            list: Processed samples with guaranteed transcripts
+        """
+        # Separate samples needing STT
+        need_stt = []
+        have_transcript = []
+        
+        for i, sample in enumerate(batch):
+            # Add dataset name
+            sample["dataset_name"] = self.dataset_name
+            
+            if not sample.get("transcript") or not sample["transcript"].strip():
+                need_stt.append((i, sample))
+            else:
+                sample["confidence_score"] = 1.0
+                have_transcript.append((i, sample))
+                
+        # Process STT batch if needed
+        if need_stt and self.enable_stt and self.stt_pipeline:
+            self.logger.info(f"Running STT on {len(need_stt)} samples")
+            
+            # Extract audio for batch
+            audio_batch = []
+            for idx, sample in need_stt:
+                try:
+                    audio_bytes = self._extract_audio_bytes(sample.get("audio"))
+                    if audio_bytes:
+                        import soundfile as sf
+                        import io
+                        buffer = io.BytesIO(audio_bytes)
+                        audio_array, sr = sf.read(buffer)
+                        
+                        # Ensure 16kHz
+                        if sr != 16000:
+                            import librosa
+                            audio_array = librosa.resample(audio_array, orig_sr=sr, target_sr=16000)
+                            
+                        audio_batch.append(audio_array)
+                    else:
+                        audio_batch.append(None)
+                except Exception as e:
+                    self.logger.error(f"Failed to extract audio for sample {idx}: {e}")
+                    audio_batch.append(None)
+                    
+            # Run batch STT
+            try:
+                results = self.stt_pipeline.transcribe_batch([a for a in audio_batch if a is not None])
+                result_idx = 0
+                
+                for i, (idx, sample) in enumerate(need_stt):
+                    if audio_batch[i] is not None:
+                        transcript, confidence = results[result_idx]
+                        result_idx += 1
+                        
+                        # Ensure non-empty transcript
+                        if transcript.strip():
+                            sample["transcript"] = transcript
+                            sample["confidence_score"] = confidence
+                        else:
+                            sample["transcript"] = "[INAUDIBLE]"
+                            sample["confidence_score"] = 0.1
+                    else:
+                        sample["transcript"] = "[NO_AUDIO]"
+                        sample["confidence_score"] = 0.0
+                        
+                    have_transcript.append((idx, sample))
+                    
+            except Exception as e:
+                self.logger.error(f"Batch STT failed: {e}")
+                # Fallback for failed batch
+                for idx, sample in need_stt:
+                    sample["transcript"] = "[STT_ERROR]"
+                    sample["confidence_score"] = 0.0
+                    have_transcript.append((idx, sample))
+        else:
+            # No STT available - use fallbacks
+            for idx, sample in need_stt:
+                sample["transcript"] = "[NO_TRANSCRIPT]"
+                sample["confidence_score"] = 0.0
+                have_transcript.append((idx, sample))
+                
+        # Sort by original index and return
+        have_transcript.sort(key=lambda x: x[0])
+        return [sample for _, sample in have_transcript]
     
     def _log_streaming_progress(self, samples_processed: int, interval: int = 100) -> None:
         """

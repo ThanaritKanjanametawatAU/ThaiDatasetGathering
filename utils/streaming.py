@@ -118,6 +118,10 @@ dataset_info:
     dtype: string
   - name: length
     dtype: float32
+  - name: dataset_name
+    dtype: string
+  - name: confidence_score
+    dtype: float64
   splits:
   - name: train
     num_examples: {dataset_info.get('total_samples', 0)}
@@ -168,6 +172,11 @@ for sample in dataset['train']:
 - `audio`: Audio data with 16kHz sampling rate
 - `transcript`: Text transcript of the audio
 - `length`: Duration in seconds
+- `dataset_name`: Source dataset name (e.g., "GigaSpeech2", "ProcessedVoiceTH", "MozillaCommonVoice")
+- `confidence_score`: Confidence score of the transcript (0.0-1.0)
+  - 1.0: Original transcript from source dataset
+  - <1.0: STT-generated transcript
+  - 0.0: Fallback transcript (e.g., [NO_TRANSCRIPT])
 
 ## Processing Details
 
