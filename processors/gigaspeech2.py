@@ -284,6 +284,157 @@ class GigaSpeech2Processor(BaseProcessor):
             self.logger.error(f"Error estimating dataset size: {str(e)}")
             return 0
     
+    def process_streaming(self, checkpoint: Optional[str] = None, sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
+        """
+        Process the GigaSpeech2 dataset in streaming mode without downloading everything.
+
+        Args:
+            checkpoint: Path to checkpoint file (optional)
+            sample_mode: If True, only process a small sample of the dataset
+            sample_size: Number of samples to process in sample mode
+
+        Yields:
+            dict: Processed sample in standard schema
+        """
+        # Initialize streaming state
+        checkpoint_data, skip_count = self._initialize_streaming_state(checkpoint)
+        
+        try:
+            # Load dataset in streaming mode
+            self.logger.info(f"Loading GigaSpeech2 in streaming mode from {self.source}")
+            
+            # Load language-specific data files to avoid streaming through all languages
+            using_language_specific = False
+            if self.language_filter:
+                self.logger.info(f"Loading {self.language_filter} data files directly")
+                try:
+                    # Use data_files to load only the specific language
+                    data_pattern = f'data/{self.language_filter}/train/*.tar.gz'
+                    dataset = load_dataset(
+                        self.source,
+                        data_files={'train': data_pattern},
+                        split='train',
+                        streaming=True
+                    )
+                    self.logger.info(f"Successfully loaded {self.language_filter} data files")
+                    using_language_specific = True
+                except Exception as e:
+                    self.logger.warning(f"Failed to load {self.language_filter} data directly: {e}")
+                    self.logger.info("Falling back to default dataset with filtering")
+                    dataset = load_dataset(
+                        self.source,
+                        'default',
+                        split='train',
+                        streaming=True
+                    )
+            else:
+                # Load default dataset
+                dataset = load_dataset(
+                    self.source,
+                    'default',  # Use default config
+                    split='train',
+                    streaming=True
+                )
+            
+            # Log info about streaming through dataset
+            self.logger.info(f"Streaming through dataset to find {self.language_filter} samples")
+            
+            # Skip to checkpoint if resuming
+            samples_processed = 0
+            samples_yielded = 0
+            samples_examined = 0
+            
+            for sample in dataset:
+                samples_examined += 1
+                
+                # Log first few Thai samples to debug fields
+                if self.language_filter and f'/data/{self.language_filter}/' in sample.get('__url__', '') and samples_processed <= 3:
+                    self.logger.info(f"Thai sample {samples_processed+1}: keys={list(sample.keys())}, has_wav={'wav' in sample}, has_text={'text' in sample}")
+                
+                # Log progress every 1000 samples examined (more efficient)
+                if samples_examined % 1000 == 0:
+                    self.logger.info(f"Examined {samples_examined} samples, found {samples_processed} {self.language_filter} samples, yielded {samples_yielded}")
+                    
+                # Early termination warning for sample mode (only log once)
+                if sample_mode and samples_examined == sample_size * 100 and samples_yielded < sample_size:
+                    self.logger.warning(f"Examined {samples_examined} samples but only found {samples_yielded} {self.language_filter} samples. Thai content might be sparse.")
+                
+                # Filter for language - only needed if we're using the fallback dataset
+                # If we successfully loaded language-specific files, no filtering needed
+                if self.language_filter and not using_language_specific:
+                    # Extract language from URL: data/{lang}/train/*.tar.gz
+                    url = sample.get('__url__', '')
+                    if f'/data/{self.language_filter}/' not in url:
+                        continue
+                    
+                # Check if we should skip or stop
+                should_skip, should_break = self._should_skip_sample(
+                    samples_processed, skip_count, samples_yielded, sample_mode, sample_size
+                )
+                if should_skip:
+                    samples_processed += 1
+                    continue
+                if should_break:
+                    break
+                
+                try:
+                    # Extract audio and transcript
+                    # GigaSpeech2 uses 'wav' key for audio data
+                    audio_data = sample.get('wav', sample.get('audio', {}))
+                    
+                    # GigaSpeech2 transcripts are in separate TSV files, not in the webdataset
+                    # For now, we'll use empty transcript for streaming mode
+                    # TODO: Load transcripts from TSV files if needed
+                    transcript = sample.get('text', sample.get('transcript', ''))
+                    if not transcript:
+                        # Log once that transcripts are not available in streaming mode
+                        if samples_processed == 0:
+                            self.logger.info("Note: GigaSpeech2 transcripts are in separate TSV files, not available in streaming mode")
+                    
+                    # Skip if no audio
+                    if not audio_data:
+                        self.logger.warning(f"Skipping sample without audio")
+                        continue
+                    
+                    # Extract audio bytes
+                    audio_bytes = self._extract_audio_bytes(audio_data)
+                    if not audio_bytes:
+                        continue
+                    
+                    # Process audio (validate, preprocess, convert to HF format)
+                    audio_hf = self._process_audio_for_streaming(audio_bytes, f"gigaspeech2_{samples_processed}")
+                    if not audio_hf:
+                        continue
+                    
+                    # Create sample in standard schema
+                    processed_sample = self._create_streaming_sample(
+                        audio_hf, transcript, samples_processed
+                    )
+                    
+                    # Validate sample
+                    errors = self.validate_sample(processed_sample)
+                    if errors:
+                        self.logger.warning(f"Sample validation errors: {errors}")
+                        continue
+                    
+                    samples_processed += 1
+                    samples_yielded += 1
+                    
+                    yield processed_sample
+                    
+                    # Log progress
+                    self._log_streaming_progress(samples_processed)
+                    
+                except Exception as e:
+                    self.logger.error(f"Error processing sample {samples_processed}: {str(e)}")
+                    continue
+            
+            self.logger.info(f"Completed streaming processing: {samples_yielded} samples yielded")
+            
+        except Exception as e:
+            self.logger.error(f"Error in streaming processing: {str(e)}")
+            raise
+    
     def _load_thai_archives_sample(self, sample_size: int, sample_archives: int) -> Any:
         """
         Load a small sample by downloading specific Thai archive files.

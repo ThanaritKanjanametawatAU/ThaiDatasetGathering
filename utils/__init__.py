@@ -6,6 +6,7 @@ from .audio import get_audio_length, is_valid_audio
 from .logging import setup_logging, ProgressTracker
 from .huggingface import read_hf_token, authenticate_hf, create_hf_dataset, upload_dataset, get_last_id
 from .cache import CacheManager
+from .streaming import StreamingUploader, StreamingBatchProcessor, create_streaming_dataset
 
 __all__ = [
     'get_audio_length',
@@ -17,5 +18,8 @@ __all__ = [
     'create_hf_dataset',
     'upload_dataset',
     'get_last_id',
-    'CacheManager'
+    'CacheManager',
+    'StreamingUploader',
+    'StreamingBatchProcessor',
+    'create_streaming_dataset'
 ]

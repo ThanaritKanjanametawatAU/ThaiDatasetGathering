@@ -74,7 +74,7 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
         # Load dataset
         try:
             # Load dataset with language filter
-            dataset = load_dataset(self.source, self.language_filter, split=self.split)
+            dataset = load_dataset(self.source, self.language_filter, split=self.split, trust_remote_code=True)
 
             # Initialize progress tracker
             total_items = len(dataset)
@@ -256,3 +256,94 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
         except Exception as e:
             self.logger.error(f"Error estimating dataset size: {str(e)}")
             return 0
+    
+    def process_streaming(self, checkpoint: Optional[str] = None, sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
+        """
+        Process the Mozilla Common Voice dataset in streaming mode.
+
+        Args:
+            checkpoint: Path to checkpoint file (optional)
+            sample_mode: If True, only process a small sample of the dataset
+            sample_size: Number of samples to process in sample mode
+
+        Yields:
+            dict: Processed sample in standard schema
+        """
+        # Initialize streaming state
+        checkpoint_data, skip_count = self._initialize_streaming_state(checkpoint)
+        
+        try:
+            # Load dataset in streaming mode
+            self.logger.info(f"Loading Mozilla Common Voice in streaming mode for language: {self.language_filter}")
+            
+            dataset = load_dataset(
+                self.source,
+                self.language_filter,
+                split=self.split,
+                streaming=True,
+                trust_remote_code=True
+            )
+            
+            # Skip to checkpoint if resuming
+            samples_processed = 0
+            samples_yielded = 0
+            
+            for sample in dataset:
+                # Check if we should skip or stop
+                should_skip, should_break = self._should_skip_sample(
+                    samples_processed, skip_count, samples_yielded, sample_mode, sample_size
+                )
+                if should_skip:
+                    samples_processed += 1
+                    continue
+                if should_break:
+                    break
+                
+                try:
+                    # Extract audio and transcript
+                    audio_data = sample.get('audio', {})
+                    transcript = sample.get('sentence', '')
+                    
+                    # Skip if no audio
+                    if not audio_data:
+                        self.logger.warning(f"Skipping sample without audio")
+                        continue
+                    
+                    # Extract audio bytes
+                    audio_bytes = self._extract_audio_bytes(audio_data)
+                    if not audio_bytes:
+                        continue
+                    
+                    # Process audio (validate, preprocess, convert to HF format)
+                    audio_hf = self._process_audio_for_streaming(audio_bytes, f"mozilla_cv_{samples_processed}")
+                    if not audio_hf:
+                        continue
+                    
+                    # Create sample in standard schema
+                    processed_sample = self._create_streaming_sample(
+                        audio_hf, transcript, samples_processed
+                    )
+                    
+                    # Validate sample
+                    errors = self.validate_sample(processed_sample)
+                    if errors:
+                        self.logger.warning(f"Sample validation errors: {errors}")
+                        continue
+                    
+                    samples_processed += 1
+                    samples_yielded += 1
+                    
+                    yield processed_sample
+                    
+                    # Log progress
+                    self._log_streaming_progress(samples_processed)
+                    
+                except Exception as e:
+                    self.logger.error(f"Error processing sample {samples_processed}: {str(e)}")
+                    continue
+            
+            self.logger.info(f"Completed streaming processing: {samples_yielded} samples yielded")
+            
+        except Exception as e:
+            self.logger.error(f"Error in streaming processing: {str(e)}")
+            raise

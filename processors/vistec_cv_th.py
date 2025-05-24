@@ -408,3 +408,103 @@ class VistecCommonVoiceTHProcessor(BaseProcessor):
                 pass
 
         return total_items
+    
+    def process_streaming(self, checkpoint: Optional[str] = None, sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
+        """
+        Process the VISTEC Common Voice TH dataset in streaming mode.
+        
+        Note: This dataset is file-based, so we'll stream from downloaded files.
+
+        Args:
+            checkpoint: Path to checkpoint file (optional)
+            sample_mode: If True, only process a small sample of the dataset
+            sample_size: Number of samples to process in sample mode
+
+        Yields:
+            dict: Processed sample in standard schema
+        """
+        # Initialize streaming state
+        checkpoint_data, skip_count = self._initialize_streaming_state(checkpoint)
+        
+        try:
+            # Ensure dataset is available
+            self._ensure_dataset_available()
+            
+            # Get CSV files
+            csv_files = self._find_csv_files()
+            if not csv_files:
+                self.logger.error("No CSV files found")
+                return
+            
+            samples_processed = 0
+            samples_yielded = 0
+            
+            for csv_file in csv_files:
+                csv_dir = os.path.dirname(csv_file)
+                
+                try:
+                    with open(csv_file, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        
+                        for row in reader:
+                            # Check if we should skip or stop
+                            should_skip, should_break = self._should_skip_sample(
+                                samples_processed, skip_count, samples_yielded, sample_mode, sample_size
+                            )
+                            if should_skip:
+                                samples_processed += 1
+                                continue
+                            if should_break:
+                                return
+                            
+                            try:
+                                # Get file path
+                                file_path = os.path.join(csv_dir, row['path'])
+                                
+                                # Skip if file doesn't exist
+                                if not os.path.exists(file_path):
+                                    self.logger.warning(f"Audio file not found: {file_path}")
+                                    continue
+                                
+                                # Read audio file
+                                with open(file_path, 'rb') as audio_file:
+                                    audio_bytes = audio_file.read()
+                                
+                                # Process audio (validate, preprocess, convert to HF format)
+                                audio_hf = self._process_audio_for_streaming(audio_bytes, f"vistec_cv_{samples_processed}")
+                                if not audio_hf:
+                                    self.logger.warning(f"Failed to process audio: {file_path}")
+                                    continue
+                                
+                                # Create sample in standard schema
+                                processed_sample = self._create_streaming_sample(
+                                    audio_hf, row.get('sentence', ''), samples_processed
+                                )
+                                
+                                # Validate sample
+                                errors = self.validate_sample(processed_sample)
+                                if errors:
+                                    self.logger.warning(f"Sample validation errors: {errors}")
+                                    continue
+                                
+                                samples_processed += 1
+                                samples_yielded += 1
+                                
+                                yield processed_sample
+                                
+                                # Log progress
+                                self._log_streaming_progress(samples_processed)
+                                
+                            except Exception as e:
+                                self.logger.error(f"Error processing sample {samples_processed}: {str(e)}")
+                                continue
+                
+                except Exception as e:
+                    self.logger.error(f"Error processing CSV file {csv_file}: {str(e)}")
+                    continue
+            
+            self.logger.info(f"Completed streaming processing: {samples_yielded} samples yielded")
+            
+        except Exception as e:
+            self.logger.error(f"Error in streaming processing: {str(e)}")
+            raise

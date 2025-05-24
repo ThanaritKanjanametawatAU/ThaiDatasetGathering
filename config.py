@@ -65,10 +65,10 @@ SCHEMA = {
 # Validation rules
 VALIDATION_RULES = {
     "ID": {
-        "pattern": r"^S\d+$",
+        "pattern": r"^(S\d+|temp_\d+)$",  # Allow both S{n} and temp_{n} for streaming
         "required": True,
         "unique": True,
-        "error_message": "ID must be in format 'S{n}' where n is a number"
+        "error_message": "ID must be in format 'S{n}' or 'temp_{n}' where n is a number"
     },
     "Language": {
         "allowed_values": ["th"],
@@ -109,6 +109,15 @@ LOG_CONFIG = {
     "level": logging.INFO,
     "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     "file": os.path.join(LOG_DIR, "dataset_processing.log")
+}
+
+# Streaming configuration
+STREAMING_CONFIG = {
+    "batch_size": 1000,           # Number of samples to process before yielding
+    "upload_batch_size": 10000,   # Number of samples before uploading a shard
+    "shard_size": "5GB",          # Maximum size of each shard file
+    "max_retries": 3,             # Maximum retries for network operations
+    "retry_delay": 5,             # Delay between retries in seconds
 }
 
 # Error categories

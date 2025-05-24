@@ -22,6 +22,10 @@ class TestProcessor(BaseProcessor):
         """Process the dataset."""
         yield {"ID": "S1", "Language": "th", "audio": b'test', "transcript": "test", "length": 1.0}
     
+    def process_streaming(self, checkpoint=None, sample_mode=False, sample_size=5):
+        """Process the dataset in streaming mode."""
+        yield {"ID": "temp_0", "Language": "th", "audio": {"path": "test.wav", "bytes": b'test'}, "transcript": "test", "length": 1.0}
+    
     def get_dataset_info(self):
         """Return dataset information."""
         return {"name": self.name, "total_samples": 1}
@@ -52,7 +56,7 @@ class TestBaseProcessor(unittest.TestCase):
         sample = {
             "ID": "S1",
             "Language": "th",
-            "audio": b'test',
+            "audio": {"path": "test.wav", "bytes": b'test'},
             "transcript": "test",
             "length": 1.0
         }
