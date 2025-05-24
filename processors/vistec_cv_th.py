@@ -433,7 +433,8 @@ class VistecCommonVoiceTHProcessor(BaseProcessor):
             # Get CSV files
             csv_files = self._find_csv_files()
             if not csv_files:
-                self.logger.error("No CSV files found")
+                self.logger.warning("VISTEC Common Voice TH: No CSV files found. This dataset is not available as a HuggingFace dataset and requires manual download from GitHub.")
+                self.logger.info("Skipping VISTEC Common Voice TH in streaming mode")
                 return
             
             samples_processed = 0

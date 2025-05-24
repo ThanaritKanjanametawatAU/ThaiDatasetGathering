@@ -67,6 +67,8 @@ python main.py --fresh --all --streaming --resume
 python main.py --fresh --all --streaming --streaming-batch-size 1000 --upload-batch-size 10000
 ```
 
+**Note**: VistecCommonVoiceTH is not available as a HuggingFace dataset and will be skipped in streaming mode. This dataset requires manual download from the [GitHub repository](https://github.com/vistec-AI/commonvoice-th) and can only be processed in non-streaming mode.
+
 ### Basic Usage (Cached Mode)
 
 ```bash
