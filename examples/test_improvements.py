@@ -4,8 +4,13 @@ Test script to demonstrate the improvements for dataset processing.
 """
 
 import os
+import sys
 import time
 import logging
+
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from processors.gigaspeech2 import GigaSpeech2Processor
 from utils.cache import CacheManager
 
