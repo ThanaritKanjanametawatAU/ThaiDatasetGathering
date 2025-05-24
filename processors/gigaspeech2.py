@@ -284,6 +284,187 @@ class GigaSpeech2Processor(BaseProcessor):
             self.logger.error(f"Error estimating dataset size: {str(e)}")
             return 0
     
+    def get_available_splits(self) -> List[str]:
+        """
+        Get available splits for GigaSpeech2 dataset.
+        
+        Returns:
+            list: List of available split names
+        """
+        # GigaSpeech2 typically has train, validation, and test splits
+        # We'll check which ones are actually available
+        available_splits = []
+        
+        for split in ["train", "validation", "test"]:
+            try:
+                # Try to load the split info
+                self.logger.debug(f"Checking if split '{split}' exists...")
+                dataset_info = load_dataset(
+                    self.source,
+                    split=split,
+                    streaming=True
+                )
+                # If we can iterate at least once, the split exists
+                for _ in dataset_info:
+                    available_splits.append(split)
+                    self.logger.info(f"Found split: {split}")
+                    break
+            except Exception as e:
+                self.logger.debug(f"Split '{split}' not available: {e}")
+                
+        if not available_splits:
+            # Default to train if no splits found
+            self.logger.warning("No splits found, defaulting to 'train'")
+            available_splits = ["train"]
+            
+        return available_splits
+    
+    def _process_single_split(self, split: str, checkpoint: Optional[str] = None, 
+                             sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
+        """
+        Process a single split of GigaSpeech2 dataset.
+        
+        Args:
+            split: Split name to process
+            checkpoint: Path to checkpoint file (optional)
+            sample_mode: If True, only process a small sample
+            sample_size: Number of samples to process
+            
+        Yields:
+            dict: Processed sample in standard schema
+        """
+        self.logger.info(f"Processing GigaSpeech2 split: {split}")
+        
+        # Temporarily override the split for streaming
+        original_split = getattr(self, '_current_split', 'train')
+        self._current_split = split
+        
+        try:
+            # Use the existing streaming implementation but with the specific split
+            yield from self._process_split_streaming(split, checkpoint, sample_mode, sample_size)
+        finally:
+            self._current_split = original_split
+    
+    def _process_split_streaming(self, split: str, checkpoint: Optional[str] = None, 
+                                 sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
+        """
+        Process a specific split in streaming mode.
+        
+        Args:
+            split: Split name to process
+            checkpoint: Path to checkpoint file (optional)
+            sample_mode: If True, only process a small sample
+            sample_size: Number of samples to process
+            
+        Yields:
+            dict: Processed sample in standard schema
+        """
+        # Initialize streaming state
+        checkpoint_data, skip_count = self._initialize_streaming_state(checkpoint)
+        
+        try:
+            # Load dataset in streaming mode for the specific split
+            self.logger.info(f"Loading GigaSpeech2 split '{split}' in streaming mode")
+            
+            # Load language-specific data files to avoid streaming through all languages
+            using_language_specific = False
+            if self.language_filter:
+                self.logger.info(f"Loading {self.language_filter} data files directly for split '{split}'")
+                try:
+                    # Use data_files to load only the specific language and split
+                    data_pattern = f'data/{self.language_filter}/{split}/*.tar.gz'
+                    dataset = load_dataset(
+                        self.source,
+                        data_files={split: data_pattern},
+                        split=split,
+                        streaming=True
+                    )
+                    self.logger.info(f"Successfully loaded {self.language_filter} data files for split '{split}'")
+                    using_language_specific = True
+                except Exception as e:
+                    self.logger.warning(f"Failed to load {self.language_filter} data directly: {e}")
+                    self.logger.info(f"Falling back to default dataset with filtering for split '{split}'")
+                    dataset = load_dataset(
+                        self.source,
+                        'default',
+                        split=split,
+                        streaming=True
+                    )
+            else:
+                # Load default dataset for the split
+                dataset = load_dataset(
+                    self.source,
+                    'default',
+                    split=split,
+                    streaming=True
+                )
+            
+            # Process samples (similar to process_streaming but with split tracking)
+            samples_processed = 0
+            samples_yielded = 0
+            samples_examined = 0
+            
+            for sample in dataset:
+                samples_examined += 1
+                
+                # Filter for language if needed
+                if self.language_filter and not using_language_specific:
+                    url = sample.get('__url__', '')
+                    if f'/data/{self.language_filter}/' not in url:
+                        continue
+                
+                # Check if we should skip or stop
+                should_skip, should_break = self._should_skip_sample(
+                    samples_processed, skip_count, samples_yielded, sample_mode, sample_size
+                )
+                if should_skip:
+                    samples_processed += 1
+                    continue
+                if should_break:
+                    break
+                
+                try:
+                    # Extract audio and process
+                    audio_data = sample.get('wav', sample.get('audio', {}))
+                    transcript = sample.get('text', sample.get('transcript', ''))
+                    
+                    if not audio_data:
+                        continue
+                    
+                    audio_bytes = self._extract_audio_bytes(audio_data)
+                    if not audio_bytes:
+                        continue
+                    
+                    audio_hf = self._process_audio_for_streaming(audio_bytes, f"gigaspeech2_{split}_{samples_processed}")
+                    if not audio_hf:
+                        continue
+                    
+                    # Create sample with split info
+                    processed_sample = self._create_streaming_sample(
+                        audio_hf, transcript, samples_processed
+                    )
+                    
+                    # Validate sample
+                    errors = self.validate_sample(processed_sample)
+                    if errors:
+                        self.logger.warning(f"Sample validation errors: {errors}")
+                        continue
+                    
+                    samples_processed += 1
+                    samples_yielded += 1
+                    
+                    yield processed_sample
+                    
+                except Exception as e:
+                    self.logger.error(f"Error processing sample {samples_processed} in split '{split}': {str(e)}")
+                    continue
+            
+            self.logger.info(f"Completed processing split '{split}': {samples_yielded} samples yielded")
+            
+        except Exception as e:
+            self.logger.error(f"Error processing split '{split}': {str(e)}")
+            raise
+    
     def process_streaming(self, checkpoint: Optional[str] = None, sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
         """
         Process the GigaSpeech2 dataset in streaming mode without downloading everything.
