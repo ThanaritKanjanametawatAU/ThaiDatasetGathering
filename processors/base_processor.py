@@ -820,7 +820,8 @@ class BaseProcessor(ABC):
             return None
     
     def _create_streaming_sample(self, audio_hf: Dict[str, Any], transcript: str, 
-                                samples_processed: int, language: str = "th") -> Dict[str, Any]:
+                                samples_processed: int, language: str = "th",
+                                speaker_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a sample in standard schema for streaming.
         
@@ -829,6 +830,7 @@ class BaseProcessor(ABC):
             transcript: Text transcript
             samples_processed: Sample count for ID generation
             language: Language code
+            speaker_id: Optional speaker ID
             
         Returns:
             dict: Sample in standard schema
@@ -839,8 +841,18 @@ class BaseProcessor(ABC):
             self.logger.warning("Could not calculate audio length, using default")
             length = 1.0
             
+        # Generate speaker_id if not provided
+        if speaker_id is None:
+            # Generate a default speaker_id for this processor/dataset
+            # Use a hash of dataset name and sample index to create deterministic IDs
+            import hashlib
+            speaker_hash = hashlib.md5(f"{self.dataset_name}_{samples_processed}".encode()).hexdigest()
+            speaker_num = int(speaker_hash[:8], 16) % 100000  # Convert to number 0-99999
+            speaker_id = f"SPK_{speaker_num:05d}"
+            
         return {
             "ID": f"temp_{samples_processed}",  # Will be assigned sequential ID later
+            "speaker_id": speaker_id,
             "Language": language,
             "audio": audio_hf,
             "transcript": transcript,

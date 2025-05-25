@@ -150,6 +150,7 @@ class ProcessedVoiceTHProcessor(BaseProcessor):
                         continue
                     
                     # Create sample in standard schema
+                    # ProcessedVoiceTH doesn't have speaker information, so use default generation
                     processed_sample = self._create_streaming_sample(
                         audio_hf, transcript, samples_processed
                     )
@@ -433,10 +434,18 @@ class ProcessedVoiceTHProcessor(BaseProcessor):
 
         # Get transcript
         transcript = sample.get("sentence", "")  # ProcessedVoiceTH uses 'sentence' field
+        
+        # Generate speaker_id for this sample
+        # ProcessedVoiceTH doesn't have speaker information, so generate based on index
+        import hashlib
+        speaker_hash = hashlib.md5(f"ProcessedVoiceTH_{index}".encode()).hexdigest()
+        speaker_num = int(speaker_hash[:8], 16) % 100000  # Convert to number 0-99999
+        speaker_id = f"SPK_{speaker_num:05d}"
 
         # Create standard sample
         sample = {
             "ID": id_str,
+            "speaker_id": speaker_id,
             "Language": "th",
             "audio": audio_dict,
             "transcript": transcript,
@@ -567,6 +576,7 @@ class ProcessedVoiceTHProcessor(BaseProcessor):
                         continue
                     
                     # Create sample in standard schema
+                    # ProcessedVoiceTH doesn't have speaker information, so use default generation
                     processed_sample = self._create_streaming_sample(
                         audio_hf, transcript, samples_processed
                     )

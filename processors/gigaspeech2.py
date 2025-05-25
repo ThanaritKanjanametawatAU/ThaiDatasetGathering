@@ -369,7 +369,19 @@ class GigaSpeech2Processor(BaseProcessor):
         
         # Try to get transcript from TSV file first
         segment_id = self._extract_segment_id(sample)
+        
+        # Extract speaker ID from segment ID if possible
+        speaker_id = None
         if segment_id:
+            # Segment ID format: "0-685-9" where 685 might be speaker ID
+            parts = segment_id.split('-')
+            if len(parts) >= 2:
+                try:
+                    speaker_num = int(parts[1])
+                    speaker_id = f"SPK_{speaker_num:05d}"
+                except ValueError:
+                    pass
+            
             # Determine split (default to train if not specified)
             split = sample.get('split', 'train')
             
@@ -392,10 +404,19 @@ class GigaSpeech2Processor(BaseProcessor):
                 # If still no transcript and STT is enabled, it will be handled by the base processor
                 self.logger.debug("No transcript available from TSV or sample")
                 confidence_score = 0.0  # Will be updated by STT if enabled
+        
+        # Generate default speaker_id if not extracted
+        if speaker_id is None:
+            # Use a hash of dataset name and sample index to create deterministic IDs
+            import hashlib
+            speaker_hash = hashlib.md5(f"GigaSpeech2_{index}".encode()).hexdigest()
+            speaker_num = int(speaker_hash[:8], 16) % 100000  # Convert to number 0-99999
+            speaker_id = f"SPK_{speaker_num:05d}"
 
         # Create standard sample
         sample = {
             "ID": id_str,
+            "speaker_id": speaker_id,
             "Language": "th",
             "audio": audio_dict,
             "transcript": transcript,
@@ -645,9 +666,21 @@ class GigaSpeech2Processor(BaseProcessor):
                     if not audio_hf:
                         continue
                     
+                    # Extract speaker ID from segment ID if possible
+                    speaker_id = None
+                    if segment_id:
+                        # Segment ID format: "0-685-9" where 685 might be speaker ID
+                        parts = segment_id.split('-')
+                        if len(parts) >= 2:
+                            try:
+                                speaker_num = int(parts[1])
+                                speaker_id = f"SPK_{speaker_num:05d}"
+                            except ValueError:
+                                pass
+                    
                     # Create sample with split info
                     processed_sample = self._create_streaming_sample(
-                        audio_hf, transcript, samples_processed
+                        audio_hf, transcript, samples_processed, speaker_id=speaker_id
                     )
                     
                     # Apply STT if enabled and transcript is empty
@@ -834,9 +867,21 @@ class GigaSpeech2Processor(BaseProcessor):
                     if not audio_hf:
                         continue
                     
+                    # Extract speaker ID from segment ID if possible
+                    speaker_id = None
+                    if segment_id:
+                        # Segment ID format: "0-685-9" where 685 might be speaker ID
+                        parts = segment_id.split('-')
+                        if len(parts) >= 2:
+                            try:
+                                speaker_num = int(parts[1])
+                                speaker_id = f"SPK_{speaker_num:05d}"
+                            except ValueError:
+                                pass
+                    
                     # Create sample in standard schema
                     processed_sample = self._create_streaming_sample(
-                        audio_hf, transcript, samples_processed
+                        audio_hf, transcript, samples_processed, speaker_id=speaker_id
                     )
                     
                     # Apply STT if enabled and transcript is empty

@@ -154,9 +154,19 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
                     if not audio_hf:
                         continue
                     
+                    # Extract speaker ID from client_id
+                    client_id = sample.get('client_id', '')
+                    speaker_id = None
+                    if client_id:
+                        # Use hash of client_id to create consistent speaker IDs
+                        import hashlib
+                        speaker_hash = hashlib.md5(f"mozilla_cv_{client_id}".encode()).hexdigest()
+                        speaker_num = int(speaker_hash[:8], 16) % 100000  # Convert to number 0-99999
+                        speaker_id = f"SPK_{speaker_num:05d}"
+                    
                     # Create sample in standard schema
                     processed_sample = self._create_streaming_sample(
-                        audio_hf, transcript, samples_processed
+                        audio_hf, transcript, samples_processed, speaker_id=speaker_id
                     )
                     
                     # Apply STT if enabled and transcript is empty
@@ -440,10 +450,27 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
 
         # Get transcript
         transcript = sample.get("sentence", "")
+        
+        # Extract speaker ID from client_id
+        client_id = sample.get('client_id', '')
+        speaker_id = None
+        if client_id:
+            # Use hash of client_id to create consistent speaker IDs
+            import hashlib
+            speaker_hash = hashlib.md5(f"mozilla_cv_{client_id}".encode()).hexdigest()
+            speaker_num = int(speaker_hash[:8], 16) % 100000  # Convert to number 0-99999
+            speaker_id = f"SPK_{speaker_num:05d}"
+        else:
+            # Generate default speaker_id if no client_id
+            import hashlib
+            speaker_hash = hashlib.md5(f"MozillaCommonVoice_{index}".encode()).hexdigest()
+            speaker_num = int(speaker_hash[:8], 16) % 100000  # Convert to number 0-99999
+            speaker_id = f"SPK_{speaker_num:05d}"
 
         # Create standard sample
         sample = {
             "ID": id_str,
+            "speaker_id": speaker_id,
             "Language": "th",
             "audio": audio_dict,
             "transcript": transcript,
@@ -579,9 +606,19 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
                     if not audio_hf:
                         continue
                     
+                    # Extract speaker ID from client_id
+                    client_id = sample.get('client_id', '')
+                    speaker_id = None
+                    if client_id:
+                        # Use hash of client_id to create consistent speaker IDs
+                        import hashlib
+                        speaker_hash = hashlib.md5(f"mozilla_cv_{client_id}".encode()).hexdigest()
+                        speaker_num = int(speaker_hash[:8], 16) % 100000  # Convert to number 0-99999
+                        speaker_id = f"SPK_{speaker_num:05d}"
+                    
                     # Create sample in standard schema
                     processed_sample = self._create_streaming_sample(
-                        audio_hf, transcript, samples_processed
+                        audio_hf, transcript, samples_processed, speaker_id=speaker_id
                     )
                     
                     # Apply STT if enabled and transcript is empty
