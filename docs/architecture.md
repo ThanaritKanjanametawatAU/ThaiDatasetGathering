@@ -153,20 +153,32 @@ class BaseProcessor(ABC):
     def estimate_size(self) -> int:
         """Estimate the size of the dataset."""
         
+    def process_all_splits(self, checkpoint=None, sample_mode=False, sample_size=5):
+        """Process all splits in streaming mode (main entry point for streaming)."""
+        
+    def process_streaming(self, dataset, split_name, checkpoint_state):
+        """Process a single split in streaming mode."""
+        
     def validate_sample(self, sample: Dict[str, Any]) -> List[str]:
         """Validate a sample against the standard schema."""
         
     def save_checkpoint(self, checkpoint_data: Dict[str, Any], checkpoint_file: Optional[str] = None) -> str:
-        """Save checkpoint data to file."""
+        """Save checkpoint data to file (unified format v2.0)."""
         
     def load_checkpoint(self, checkpoint_file: str) -> Optional[Dict[str, Any]]:
-        """Load checkpoint data from file."""
+        """Load checkpoint data from file (with backward compatibility)."""
         
     def get_latest_checkpoint(self) -> Optional[str]:
         """Get the latest checkpoint file for this processor."""
         
     def generate_id(self, current_index: int) -> str:
         """Generate sequential ID in format S{n}."""
+        
+    def create_hf_audio_format(self, audio_bytes: bytes, audio_id: str) -> Dict[str, Any]:
+        """Create HuggingFace-compatible audio format."""
+        
+    def preprocess_audio(self, audio_bytes: bytes) -> bytes:
+        """Preprocess audio to standard format (16kHz mono WAV)."""
 ```
 
 ## Design Patterns
@@ -222,9 +234,15 @@ The system is designed with modularity in mind, making it easy to add new datase
 
 To handle potentially large datasets, the system processes data in a streaming fashion, yielding samples one at a time rather than loading the entire dataset into memory.
 
-### Checkpointing
+### Unified Checkpointing System
 
-The system implements a checkpointing mechanism to allow resuming interrupted processing. This is especially important for large datasets that may take a long time to process.
+The system implements a unified checkpoint mechanism (version 2.0) that works consistently across both streaming and cached modes. This allows resuming interrupted processing and maintains backward compatibility with older checkpoint formats. The checkpoint system includes:
+
+- **Version Management**: Checkpoint format version tracking for compatibility
+- **Mode Agnostic**: Same checkpoint format for streaming and cached modes
+- **Automatic Conversion**: Legacy checkpoints are automatically converted to the unified format
+- **Progress Tracking**: Tracks processed samples, current position, and processed IDs
+- **State Preservation**: Maintains all necessary state to resume processing exactly where it left off
 
 ### Sample Mode
 
@@ -232,7 +250,15 @@ The system includes a sample mode feature that allows processing a small number 
 
 ### Standardized Schema
 
-All datasets are converted to a standardized schema, making it easier to combine them into a single dataset and ensuring consistency across different data sources.
+All datasets are converted to a standardized schema, making it easier to combine them into a single dataset and ensuring consistency across different data sources. The schema includes:
+
+- **ID**: Sequential identifiers (S1, S2, S3, ...) globally unique across all datasets
+- **Language**: "th" for Thai
+- **audio**: Audio data in HuggingFace format (dict with array, sampling_rate, and path)
+- **transcript**: Transcript of the audio if available
+- **length**: Duration of the audio in seconds
+- **dataset_name**: Name of the source dataset (e.g., "GigaSpeech2", "ProcessedVoiceTH")
+- **confidence_score**: Confidence score of the transcript (1.0 for original transcripts)
 
 ### Command-Line Interface
 
