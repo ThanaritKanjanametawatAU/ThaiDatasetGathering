@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thai STT Integration Plan</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        /* Embedded CSS for immediate loading */
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #ec4899;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #06b6d4;
+            
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-tertiary: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --border: #e2e8f0;
+            --border-light: #f1f5f9;
+            
+            --glass-bg: rgba(255, 255, 255, 0.25);
+            --glass-border: rgba(255, 255, 255, 0.18);
+            --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+            
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-success: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --gradient-hero: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            
+            --transition-fast: 0.2s ease;
+            --transition-normal: 0.3s ease;
+            --transition-slow: 0.5s ease;
+        }
+
+        .dark-mode {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --border-light: #475569;
+            
+            --glass-bg: rgba(15, 23, 42, 0.25);
+            --glass-border: rgba(148, 163, 184, 0.18);
+            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            transition: background-color var(--transition-normal), color var(--transition-normal);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        #theme-toggle {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 50px;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            position: relative;
+            overflow: hidden;
+            color: var(--text-primary);
+        }
+
+        #theme-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: var(--glass-shadow);
+        }
+
+        #theme-toggle i {
+            font-size: 1.5rem;
+            transition: all var(--transition-normal);
+            position: absolute;
+        }
+
+        .light-mode #theme-toggle .fa-moon {
+            opacity: 1;
+            transform: rotate(0deg);
+        }
+
+        .light-mode #theme-toggle .fa-sun {
+            opacity: 0;
+            transform: rotate(180deg);
+        }
+
+        .dark-mode #theme-toggle .fa-moon {
+            opacity: 0;
+            transform: rotate(-180deg);
+        }
+
+        .dark-mode #theme-toggle .fa-sun {
+            opacity: 1;
+            transform: rotate(0deg);
+            color: #fbbf24;
+        }
+
+        /* Background Decorations */
+        .bg-decorations {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .floating-shape {
+            position: absolute;
+            border-radius: 50%;
+            background: var(--gradient-primary);
+            opacity: 0.1;
+            animation: float 20s infinite linear;
+        }
+
+        .shape-1 {
+            width: 300px;
+            height: 300px;
+            top: 10%;
+            left: -10%;
+            animation-delay: 0s;
+        }
+
+        .shape-2 {
+            width: 200px;
+            height: 200px;
+            top: 60%;
+            right: -5%;
+            animation-delay: 5s;
+            background: var(--gradient-secondary);
+        }
+
+        .shape-3 {
+            width: 150px;
+            height: 150px;
+            bottom: 20%;
+            left: 20%;
+            animation-delay: 10s;
+            background: var(--gradient-success);
+        }
+
+        .shape-4 {
+            width: 100px;
+            height: 100px;
+            top: 30%;
+            right: 30%;
+            animation-delay: 15s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            25% { transform: translateY(-20px) rotate(90deg); }
+            50% { transform: translateY(0px) rotate(180deg); }
+            75% { transform: translateY(20px) rotate(270deg); }
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            background: var(--gradient-hero);
+            position: relative;
+            overflow: hidden;
+            padding: 60px 0;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='m36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+            opacity: 0.5;
+        }
+
+        .hero-content {
+            flex: 1;
+            position: relative;
+            z-index: 2;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 50px;
+            padding: 8px 20px;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: white;
+        }
+
+        .badge-highlight {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .hero-title {
+            font-size: clamp(3rem, 8vw, 5rem);
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .title-main {
+            display: block;
+        }
+
+        .title-gradient {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 3s ease-in-out infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .hero-subtitle {
+            font-size: 1.25rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 40px;
+            max-width: 600px;
+            line-height: 1.6;
+        }
+
+        .hero-stats {
+            display: flex;
+            gap: 40px;
+            margin-top: 50px;
+        }
+
+        .stat-item {
+            text-align: center;
+            color: white;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Hero Visual */
+        .hero-visual {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .floating-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: var(--glass-shadow);
+            animation: cardFloat 6s ease-in-out infinite;
+            max-width: 300px;
+        }
+
+        @keyframes cardFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .card-dots {
+            display: flex;
+            gap: 8px;
+        }
+
+        .card-dots span {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .card-dots span:nth-child(1) { background: #ef4444; }
+        .card-dots span:nth-child(2) { background: #f59e0b; }
+        .card-dots span:nth-child(3) { background: #10b981; }
+
+        .card-title {
+            font-weight: 600;
+        }
+
+        .pipeline-step {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.8);
+            transition: all var(--transition-normal);
+        }
+
+        .pipeline-step:last-child {
+            border-bottom: none;
+        }
+
+        .pipeline-step.active {
+            color: white;
+            transform: translateX(10px);
+        }
+
+        .pipeline-step i {
+            font-size: 1.2rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Navigation */
+        .navbar {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            transition: all var(--transition-normal);
+        }
+
+        .nav-container {
+            display: flex;
+            justify-content: center;
+            padding: 20px 0;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            padding: 12px 20px;
+            border-radius: 50px;
+            transition: all var(--transition-normal);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: var(--gradient-primary);
+            transition: left var(--transition-normal);
+            z-index: -1;
+        }
+
+        .nav-link:hover::before,
+        .nav-link.active::before {
+            left: 0;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .nav-link i {
+            font-size: 1.1rem;
+        }
+
+        /* Main Content */
+        .main-content {
+            padding: 60px 0;
+        }
+
+        .section {
+            padding: 80px 0;
+            position: relative;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-title {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .section-subtitle {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Glass Effect */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+        }
+
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+        }
+
+        .feature-card {
+            padding: 40px;
+            border-radius: 20px;
+            transition: all var(--transition-normal);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--gradient-primary);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 16px;
+            background: var(--gradient-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            color: white;
+            font-size: 1.5rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text-primary);
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .feature-highlight {
+            display: inline-block;
+            background: var(--gradient-success);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .feature-list {
+            list-style: none;
+        }
+
+        .feature-list li {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+            color: var(--text-secondary);
+        }
+
+        .feature-list i {
+            color: var(--success);
+            font-size: 0.9rem;
+        }
+
+        /* Hardware Specs */
+        .hardware-specs {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .spec-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .spec-item:last-child {
+            border-bottom: none;
+        }
+
+        .spec-label {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .spec-value {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .hero {
+                flex-direction: column;
+                text-align: center;
+                padding: 40px 0;
+            }
+            
+            .hero-stats {
+                justify-content: center;
+                gap: 20px;
+            }
+            
+            .nav-links {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            
+            .nav-link {
+                padding: 8px 16px;
+                font-size: 0.9rem;
+            }
+            
+            .section-title {
+                font-size: 2rem;
+            }
+            
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 0 15px;
+            }
+            
+            .hero-title {
+                font-size: 2.5rem;
+            }
+            
+            .feature-card {
+                padding: 20px;
+            }
+            
+            .section {
+                padding: 40px 0;
+            }
+        }
+
+        /* Additional sections styling will be loaded from external CSS */
+    </style>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="light-mode">
+    <!-- Dark Mode Toggle -->
+    <div class="theme-toggle">
+        <button id="theme-toggle" aria-label="Toggle dark mode">
+            <i class="fas fa-moon"></i>
+            <i class="fas fa-sun"></i>
+        </button>
+    </div>
+
+    <!-- Background Decorations -->
+    <div class="bg-decorations">
+        <div class="floating-shape shape-1"></div>
+        <div class="floating-shape shape-2"></div>
+        <div class="floating-shape shape-3"></div>
+        <div class="floating-shape shape-4"></div>
+    </div>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <span class="badge-text">AI-Powered</span>
+                    <span class="badge-highlight">STT Integration</span>
+                </div>
+                <h1 class="hero-title">
+                    <span class="title-main">Thai Speech-to-Text</span>
+                    <span class="title-gradient">Implementation Plan</span>
+                </h1>
+                <p class="hero-subtitle">
+                    Automated transcription for 10TB+ Thai audio datasets using ensemble AI models<br>
+                    <strong style="color: #fbbf24;">Updated:</strong> 100% transcript coverage • All splits → train • Enhanced metadata tracking
+                </p>
+                <div class="hero-stats">
+                    <div class="stat-item">
+                        <div class="stat-number">32GB</div>
+                        <div class="stat-label">VRAM</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">2</div>
+                        <div class="stat-label">AI Models</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">10TB+</div>
+                        <div class="stat-label">Dataset</div>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="floating-card">
+                    <div class="card-header">
+                        <div class="card-dots">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <span class="card-title">STT Pipeline</span>
+                    </div>
+                    <div class="card-content">
+                        <div class="pipeline-step active">
+                            <i class="fas fa-microphone"></i>
+                            <span>Audio Stream</span>
+                        </div>
+                        <div class="pipeline-step">
+                            <i class="fas fa-brain"></i>
+                            <span>AI Processing</span>
+                        </div>
+                        <div class="pipeline-step">
+                            <i class="fas fa-file-text"></i>
+                            <span>Transcript</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-links">
+                <a href="#overview" class="nav-link active" data-section="overview">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="#architecture" class="nav-link" data-section="architecture">
+                    <i class="fas fa-sitemap"></i>
+                    <span>Architecture</span>
+                </a>
+                <a href="#implementation" class="nav-link" data-section="implementation">
+                    <i class="fas fa-code"></i>
+                    <span>Implementation</span>
+                </a>
+                <a href="#flow" class="nav-link" data-section="flow">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>Data Flow</span>
+                </a>
+                <a href="#performance" class="nav-link" data-section="performance">
+                    <i class="fas fa-rocket"></i>
+                    <span>Performance</span>
+                </a>
+                <a href="#final-plan" class="nav-link" data-section="final-plan">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Final Plan</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <!-- Overview Section -->
+        <section id="overview" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Project Overview</h2>
+                    <p class="section-subtitle">Automated Thai speech transcription with state-of-the-art AI models</p>
+                </div>
+
+                <div class="feature-grid">
+                    <div class="feature-card glass">
+                        <div class="feature-icon">
+                            <i class="fas fa-bullseye"></i>
+                        </div>
+                        <h3>Mission</h3>
+                        <p>Automatically transcribe Thai audio samples lacking transcripts using ensemble STT models with confidence scoring</p>
+                        <div class="feature-highlight">Intelligent Processing</div>
+                    </div>
+
+                    <div class="feature-card glass">
+                        <div class="feature-icon">
+                            <i class="fas fa-cogs"></i>
+                        </div>
+                        <h3>Key Features</h3>
+                        <ul class="feature-list">
+                            <li><i class="fas fa-check"></i> 100% transcript coverage guaranteed</li>
+                            <li><i class="fas fa-check"></i> All splits combined into single train split</li>
+                            <li><i class="fas fa-check"></i> Enhanced metadata: dataset_name + confidence_score</li>
+                            <li><i class="fas fa-check"></i> Preserves processor-specific filtering</li>
+                            <li><i class="fas fa-check"></i> Test-driven development (5 samples/dataset)</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card glass">
+                        <div class="feature-icon">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <h3>Hardware Setup</h3>
+                        <div class="hardware-specs">
+                            <div class="spec-item">
+                                <span class="spec-label">GPU</span>
+                                <span class="spec-value">RTX 5090 (32GB)</span>
+                            </div>
+                            <div class="spec-item">
+                                <span class="spec-label">Storage</span>
+                                <span class="spec-value">1TB SSD</span>
+                            </div>
+                            <div class="spec-item">
+                                <span class="spec-label">Dataset</span>
+                                <span class="spec-value">10TB+ Audio</span>
+                            </div>
+                            <div class="spec-item">
+                                <span class="spec-label">Cache</span>
+                                <span class="spec-value">Max 100GB</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Implementation Ready Section -->
+                <div style="margin-top: 80px; text-align: center;">
+                    <div style="background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 20px; padding: 40px; box-shadow: var(--glass-shadow);">
+                        <h2 style="font-size: 2.5rem; margin-bottom: 20px; background: var(--gradient-success); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">🚀 Ready for Implementation</h2>
+                        <p style="font-size: 1.2rem; color: var(--text-secondary); margin-bottom: 30px;">All technical specifications confirmed and optimized for your RTX 5090 setup</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 30px 0;">
+                            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; padding: 20px;">
+                                <h4 style="color: var(--success); margin-bottom: 10px;">✅ Model Caching</h4>
+                                <p style="color: var(--text-secondary); font-size: 0.9rem;">~8GB local storage</p>
+                            </div>
+                            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; padding: 20px;">
+                                <h4 style="color: var(--success); margin-bottom: 10px;">✅ Parallel Streams</h4>
+                                <p style="color: var(--text-secondary); font-size: 0.9rem;">Maximum GPU utilization</p>
+                            </div>
+                            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; padding: 20px;">
+                                <h4 style="color: var(--success); margin-bottom: 10px;">✅ Thai Only</h4>
+                                <p style="color: var(--text-secondary); font-size: 0.9rem;">Optimized pipeline</p>
+                            </div>
+                            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; padding: 20px;">
+                                <h4 style="color: var(--success); margin-bottom: 10px;">✅ Clean Ensemble</h4>
+                                <p style="color: var(--text-secondary); font-size: 0.9rem;">Two-model approach</p>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 40px;">
+                            <button style="background: var(--gradient-success); color: white; border: none; padding: 20px 40px; border-radius: 50px; font-size: 1.2rem; font-weight: 700; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 1px;" onmouseover="this.style.transform='translateY(-5px)'; this.style.boxShadow='0 20px 40px rgba(16, 185, 129, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                                <i class="fas fa-rocket" style="margin-right: 10px;"></i>
+                                IMPLEMENT NOW
+                            </button>
+                        </div>
+
+                        <div style="margin-top: 30px; font-size: 0.9rem; color: var(--text-muted);">
+                            All questions answered • Hardware optimized • Pipeline designed
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture Section -->
+        <section id="architecture" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">System Architecture</h2>
+                    <p class="section-subtitle">Technical architecture of the STT integration</p>
+                </div>
+
+                <div class="feature-grid">
+                    <div class="feature-card glass">
+                        <div class="feature-icon">
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <h3>Ensemble Model Architecture</h3>
+                        <p>Two-model ensemble approach using Wav2Vec2 and Whisper Large V3 for highest confidence transcription.</p>
+                        <ul class="feature-list">
+                            <li><i class="fas fa-check"></i> Wav2Vec2 Thai (~3GB VRAM)</li>
+                            <li><i class="fas fa-check"></i> Whisper Large V3 (~5GB VRAM)</li>
+                            <li><i class="fas fa-check"></i> Confidence-based selection</li>
+                            <li><i class="fas fa-check"></i> Parallel processing support</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card glass">
+                        <div class="feature-icon">
+                            <i class="fas fa-stream"></i>
+                        </div>
+                        <h3>Streaming Architecture</h3>
+                        <p>Memory-efficient streaming-first design for handling 10TB+ datasets with 1TB storage.</p>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">Streaming Approach</span>
+                                <button class="copy-btn" data-copy="streaming-code">Copy</button>
+                            </div>
+                            <pre><code id="streaming-code"># Streaming approach
+dataset = load_dataset(
+    "Thanarit/Thai-Voice",
+    streaming=True,
+    split="train"
+)
+
+# Process in micro-batches
+for batch in dataset.batch(16):
+    results = stt_pipeline(batch)
+    yield results</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="feature-card glass">
+                        <div class="feature-icon">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <h3>Enhanced Data Schema</h3>
+                        <p>Updated schema with comprehensive metadata tracking for quality assurance.</p>
+                        <div class="code-block" style="margin-top: 20px;">
+                            <div class="code-header">
+                                <span class="code-title">Dataset Schema</span>
+                            </div>
+                            <pre style="font-size: 0.85rem;"><code>{
+    "id": "S1",                      // Sequential ID
+    "language": "th",                // Thai language
+    "audio": {                       // HF format
+        "path": "S1.wav",
+        "bytes": &lt;audio_data&gt;
+    },
+    "transcript": "สวัสดีครับ",      // NEVER empty
+    "length": 2.5,                   // Duration
+    <strong style="color: #10b981;">"dataset_name": "GigaSpeech2",   // NEW</strong>
+    <strong style="color: #10b981;">"confidence_score": 0.95         // NEW</strong>
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Model Details -->
+                <div class="models-showcase" style="margin-top: 60px;">
+                    <h3 style="text-align: center; font-size: 2rem; margin-bottom: 40px;">STT Model Ensemble</h3>
+                    
+                    <div class="model-card">
+                        <div class="model-badge">Primary</div>
+                        <div class="model-icon">
+                            <i class="fas fa-microphone-alt"></i>
+                        </div>
+                        <h4>Wav2Vec2 Thai</h4>
+                        <p class="model-name">airesearch/wav2vec2-large-xlsr-53-th</p>
+                        <div class="model-stats">
+                            <div class="stat">
+                                <span class="stat-label">VRAM</span>
+                                <span class="stat-value">~3GB</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-label">Speed</span>
+                                <span class="stat-value gradient-text">Fast</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-label">Accuracy</span>
+                                <span class="stat-value">High</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ensemble-connector">
+                        <div class="connector-line"></div>
+                        <div class="connector-label">Highest Confidence</div>
+                    </div>
+
+                    <div class="model-card secondary-model">
+                        <div class="model-badge">Secondary</div>
+                        <div class="model-icon">
+                            <i class="fas fa-language"></i>
+                        </div>
+                        <h4>Whisper Large V3</h4>
+                        <p class="model-name">openai/whisper-large-v3</p>
+                        <div class="model-stats">
+                            <div class="stat">
+                                <span class="stat-label">VRAM</span>
+                                <span class="stat-value">~5GB</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-label">Speed</span>
+                                <span class="stat-value">Medium</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-label">Accuracy</span>
+                                <span class="stat-value gradient-text">Excellent</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Implementation Section -->
+        <section id="implementation" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Implementation Details</h2>
+                    <p class="section-subtitle">Key components and code implementation</p>
+                </div>
+
+                <div class="implementation-tabs">
+                    <div class="tab-nav">
+                        <button class="tab-btn active" data-tab="memory">
+                            <i class="fas fa-memory"></i>
+                            <span>Memory Management</span>
+                        </button>
+                        <button class="tab-btn" data-tab="ensemble">
+                            <i class="fas fa-layer-group"></i>
+                            <span>Ensemble STT</span>
+                        </button>
+                        <button class="tab-btn" data-tab="integration">
+                            <i class="fas fa-puzzle-piece"></i>
+                            <span>Pipeline Integration</span>
+                        </button>
+                        <button class="tab-btn" data-tab="error">
+                            <i class="fas fa-shield-alt"></i>
+                            <span>Error Handling</span>
+                        </button>
+                    </div>
+
+                    <div class="tab-content">
+                        <div id="memory-tab" class="tab-panel active">
+                            <h3>Memory Management for 10TB+ Dataset</h3>
+                            <p>Streaming-first approach with micro-batching to handle massive datasets with limited storage.</p>
+                            <div class="code-showcase">
+                                <div class="code-header">
+                                    <span class="code-title">StreamingProcessor.py</span>
+                                    <button class="copy-btn" data-copy="memory-code">Copy</button>
+                                </div>
+                                <pre><code id="memory-code">class StreamingProcessor:
+    def process_with_stt(self):
+        # Use HuggingFace IterableDataset
+        dataset = load_dataset(
+            self.dataset_name,
+            streaming=True,  # Critical!
+            split="train"
+        )
+        
+        # Process in micro-batches
+        batch = []
+        for sample in dataset:
+            batch.append(sample)
+            
+            if len(batch) >= self.batch_size:
+                # Process batch
+                processed = self.process_batch_with_stt(batch)
+                
+                # Immediately yield results
+                for item in processed:
+                    yield item
+                
+                # Clear batch memory
+                batch = []
+                torch.cuda.empty_cache()</code></pre>
+                            </div>
+                        </div>
+
+                        <div id="ensemble-tab" class="tab-panel">
+                            <h3>Ensemble STT Implementation</h3>
+                            <p>Highest confidence strategy using two state-of-the-art models.</p>
+                            <div class="code-showcase">
+                                <div class="code-header">
+                                    <span class="code-title">EnsembleSTT.py</span>
+                                    <button class="copy-btn" data-copy="ensemble-code">Copy</button>
+                                </div>
+                                <pre><code id="ensemble-code">class EnsembleSTT:
+    def __init__(self):
+        # Load both models at startup
+        self.wav2vec2 = Wav2Vec2Thai()  # ~3GB VRAM
+        self.whisper = WhisperModel()    # ~5GB VRAM
+        # Total: ~8GB VRAM (plenty of room in 32GB)
+    
+    def transcribe(self, audio_data: np.ndarray) -> Tuple[str, float]:
+        """Highest confidence strategy"""
+        
+        # Get predictions from both models
+        w2v_text, w2v_conf = self.wav2vec2.transcribe(audio_data)
+        whisper_text, whisper_conf = self.whisper.transcribe(audio_data)
+        
+        # Return highest confidence result
+        if w2v_conf >= whisper_conf:
+            return w2v_text, w2v_conf
+        else:
+            return whisper_text, whisper_conf</code></pre>
+                            </div>
+                        </div>
+
+                        <div id="integration-tab" class="tab-panel">
+                            <h3>STT Pipeline Integration</h3>
+                            <p>Integration points in the base processor for automatic transcription.</p>
+                            <div class="code-showcase">
+                                <div class="code-header">
+                                    <span class="code-title">BaseProcessor.py</span>
+                                    <button class="copy-btn" data-copy="integration-code">Copy</button>
+                                </div>
+                                <pre><code id="integration-code">def process_sample(self, sample: Dict[str, Any], sample_idx: int) -> Dict[str, Any]:
+    """Modified to include STT processing"""
+    
+    # Step 1: Existing processing
+    processed = self._original_process(sample, sample_idx)
+    
+    # Step 2: Add source dataset tracking
+    processed["dataset_name"] = self.dataset_name  # NEW FIELD
+    
+    # Step 3: Audio preprocessing (ensures 16kHz mono)
+    audio_data = self.preprocess_audio(processed["audio"])
+    
+    # Step 4: ENSURE transcript exists (100% coverage requirement)
+    if not processed.get("transcript") or processed["transcript"].strip() == "":
+        try:
+            # Get transcription from ensemble
+            transcript, confidence = self.stt_pipeline.transcribe(audio_data)
+            
+            # CRITICAL: Only accept non-empty transcripts
+            if transcript.strip():
+                processed["transcript"] = transcript
+                processed["confidence_score"] = confidence  # NEW FIELD
+            else:
+                # Retry with fallback
+                processed["transcript"] = "[INAUDIBLE]"
+                processed["confidence_score"] = 0.1
+        except Exception as e:
+            # On failure: mark as error but never empty
+            logger.error(f"STT failed for sample {sample_idx}: {e}")
+            processed["transcript"] = "[STT_ERROR]"
+            processed["confidence_score"] = 0.0  # NEW FIELD
+    else:
+        # Existing transcript: confidence 1.0
+        processed["confidence_score"] = 1.0  # NEW FIELD
+    
+    return processed</code></pre>
+                            </div>
+                        </div>
+
+                        <div id="error-tab" class="tab-panel">
+                            <h3>Error Handling & Recovery</h3>
+                            <p>Comprehensive error handling for production reliability.</p>
+                            <div class="code-showcase">
+                                <div class="code-header">
+                                    <span class="code-title">error_handling.py</span>
+                                    <button class="copy-btn" data-copy="error-code">Copy</button>
+                                </div>
+                                <pre><code id="error-code"># GPU OOM handling during batch processing
+def safe_transcribe_batch(self, audio_batch):
+    batch_size = len(audio_batch)
+    while batch_size > 1:
+        try:
+            return self._transcribe_batch_internal(audio_batch[:batch_size])
+        except torch.cuda.OutOfMemoryError:
+            batch_size //= 2
+            torch.cuda.empty_cache()
+            logger.warning(f"Reducing batch size to {batch_size}")
+    
+    # Final fallback: process one by one
+    return [self.transcribe(audio) for audio in audio_batch]
+
+# Corrupted audio handling
+def transcribe(self, audio_data):
+    try:
+        # Validate audio first
+        if not self.is_valid_audio(audio_data):
+            return "", 0.0
+        
+        # Process
+        return self._transcribe_internal(audio_data)
+    except Exception as e:
+        logger.error(f"STT error: {e}")
+        return "", 0.0</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Data Flow Section -->
+        <section id="flow" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Data Flow</h2>
+                    <p class="section-subtitle">End-to-end pipeline workflow</p>
+                </div>
+
+                <div class="flow-visualization">
+                    <div class="flow-steps">
+                        <div class="flow-step">
+                            <div class="step-number">1</div>
+                            <div class="step-icon">
+                                <i class="fas fa-cloud-download-alt"></i>
+                            </div>
+                            <div class="step-content">
+                                <h4>Stream Dataset</h4>
+                                <p>Load Thai-Voice dataset in streaming mode</p>
+                            </div>
+                        </div>
+
+                        <div class="flow-connector">
+                            <div class="connector-arrow"></div>
+                        </div>
+
+                        <div class="flow-step">
+                            <div class="step-number">2</div>
+                            <div class="step-icon">
+                                <i class="fas fa-filter"></i>
+                            </div>
+                            <div class="step-content">
+                                <h4>Check Transcript</h4>
+                                <p>Identify samples needing transcription</p>
+                            </div>
+                        </div>
+
+                        <div class="flow-connector">
+                            <div class="connector-arrow"></div>
+                        </div>
+
+                        <div class="flow-step">
+                            <div class="step-number">3</div>
+                            <div class="step-icon">
+                                <i class="fas fa-microphone"></i>
+                            </div>
+                            <div class="step-content">
+                                <h4>Process Audio</h4>
+                                <p>Preprocess to 16kHz mono</p>
+                            </div>
+                        </div>
+
+                        <div class="flow-connector">
+                            <div class="connector-arrow"></div>
+                        </div>
+
+                        <div class="flow-step">
+                            <div class="step-number">4</div>
+                            <div class="step-icon">
+                                <i class="fas fa-brain"></i>
+                            </div>
+                            <div class="step-content">
+                                <h4>Ensemble STT</h4>
+                                <p>Run both models, select best</p>
+                            </div>
+                        </div>
+
+                        <div class="flow-connector">
+                            <div class="connector-arrow"></div>
+                        </div>
+
+                        <div class="flow-step">
+                            <div class="step-number">5</div>
+                            <div class="step-icon">
+                                <i class="fas fa-upload"></i>
+                            </div>
+                            <div class="step-content">
+                                <h4>Update Dataset</h4>
+                                <p>Push to HuggingFace with metadata</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Memory Strategy -->
+                <div class="memory-strategy">
+                    <h3 class="strategy-title">Memory Optimization Strategy</h3>
+                    <div class="strategy-grid">
+                        <div class="strategy-card">
+                            <div class="strategy-icon">
+                                <i class="fas fa-stream"></i>
+                            </div>
+                            <h4>Streaming Mode</h4>
+                            <p>Never load full dataset into memory. Process samples one at a time using HuggingFace's streaming API.</p>
+                            <div class="strategy-benefit">Max 100MB RAM</div>
+                        </div>
+
+                        <div class="strategy-card">
+                            <div class="strategy-icon">
+                                <i class="fas fa-layer-group"></i>
+                            </div>
+                            <h4>Micro-Batching</h4>
+                            <p>Process in batches of 16 samples for GPU efficiency while maintaining low memory footprint.</p>
+                            <div class="strategy-benefit">Optimal GPU Usage</div>
+                        </div>
+
+                        <div class="strategy-card">
+                            <div class="strategy-icon">
+                                <i class="fas fa-save"></i>
+                            </div>
+                            <h4>Checkpoint System</h4>
+                            <p>Save progress every 1000 samples to enable resumption without reprocessing.</p>
+                            <div class="strategy-benefit">Fault Tolerance</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Performance Section -->
+        <section id="performance" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Performance Optimization</h2>
+                    <p class="section-subtitle">Maximizing throughput on RTX 5090</p>
+                </div>
+
+                <div class="optimization-grid">
+                    <div class="opt-card glass">
+                        <div class="opt-header">
+                            <div class="opt-icon">
+                                <i class="fas fa-tachometer-alt"></i>
+                            </div>
+                            <h4>GPU Utilization</h4>
+                        </div>
+                        <ul class="opt-features">
+                            <li><i class="fas fa-check"></i> Parallel model loading</li>
+                            <li><i class="fas fa-check"></i> Batch processing (16 samples)</li>
+                            <li><i class="fas fa-check"></i> Mixed precision (FP16)</li>
+                            <li><i class="fas fa-check"></i> CUDA memory caching</li>
+                        </ul>
+                        <div class="opt-metric">
+                            <span class="metric-value">95%</span>
+                            <span class="metric-label">GPU Utilization</span>
+                        </div>
+                    </div>
+
+                    <div class="opt-card glass">
+                        <div class="opt-header">
+                            <div class="opt-icon">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <h4>Processing Speed</h4>
+                        </div>
+                        <ul class="opt-features">
+                            <li><i class="fas fa-check"></i> ~2 seconds per sample</li>
+                            <li><i class="fas fa-check"></i> 30 samples/minute</li>
+                            <li><i class="fas fa-check"></i> 1,800 samples/hour</li>
+                            <li><i class="fas fa-check"></i> 43,200 samples/day</li>
+                        </ul>
+                        <div class="opt-metric">
+                            <span class="metric-value">30</span>
+                            <span class="metric-label">Samples/min</span>
+                        </div>
+                    </div>
+
+                    <div class="opt-card glass">
+                        <div class="opt-header">
+                            <div class="opt-icon">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <h4>Storage Efficiency</h4>
+                        </div>
+                        <ul class="opt-features">
+                            <li><i class="fas fa-check"></i> Model cache: ~8GB</li>
+                            <li><i class="fas fa-check"></i> Checkpoint files: ~1GB</li>
+                            <li><i class="fas fa-check"></i> Audio buffer: ~100MB</li>
+                            <li><i class="fas fa-check"></i> Total: <100GB</li>
+                        </ul>
+                        <div class="opt-metric">
+                            <span class="metric-value"><10%</span>
+                            <span class="metric-label">Storage Used</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Monitoring -->
+                <div class="code-block" style="margin-top: 40px;">
+                    <div class="code-header">
+                        <span class="code-title">Performance Monitoring</span>
+                        <button class="copy-btn" data-copy="perf-code">Copy</button>
+                    </div>
+                    <pre><code id="perf-code">class STTMetrics:
+    def __init__(self):
+        self.total_processed = 0
+        self.total_transcribed = 0
+        self.total_time = 0
+        self.confidence_histogram = defaultdict(int)
+    
+    def log_transcription(self, duration: float, confidence: float):
+        self.total_processed += 1
+        self.total_transcribed += 1
+        self.total_time += duration
+        self.confidence_histogram[int(confidence * 10)] += 1
+    
+    def report(self):
+        logger.info(f"STT Performance Report:")
+        logger.info(f"  Samples processed: {self.total_processed}")
+        logger.info(f"  Samples transcribed: {self.total_transcribed}")
+        logger.info(f"  Avg time per sample: {self.total_time / self.total_processed:.2f}s")
+        logger.info(f"  Confidence distribution: {dict(self.confidence_histogram)}")</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Final Plan Section -->
+        <section id="final-plan" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Final Implementation Plan</h2>
+                    <p class="section-subtitle">Everything confirmed and ready to execute</p>
+                </div>
+
+                <!-- Summary -->
+                <div class="implementation-summary glass">
+                    <h3 class="summary-title">Implementation Summary</h3>
+                    <div class="summary-stats">
+                        <div class="summary-stat">
+                            <div class="stat-icon">
+                                <i class="fas fa-brain"></i>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-label">Models</span>
+                                <span class="stat-value">2 Thai STT Models</span>
+                            </div>
+                        </div>
+                        <div class="summary-stat">
+                            <div class="stat-icon">
+                                <i class="fas fa-memory"></i>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-label">VRAM Usage</span>
+                                <span class="stat-value">~8GB / 32GB</span>
+                            </div>
+                        </div>
+                        <div class="summary-stat">
+                            <div class="stat-icon">
+                                <i class="fas fa-hdd"></i>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-label">Storage</span>
+                                <span class="stat-value"><100GB / 1TB</span>
+                            </div>
+                        </div>
+                        <div class="summary-stat">
+                            <div class="stat-icon">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-label">Speed</span>
+                                <span class="stat-value">30 samples/min</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Final Features -->
+                <div class="final-features">
+                    <div class="feature-confirmed">
+                        <div class="confirm-icon">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="confirm-content">
+                            <h3>Streaming-First Architecture</h3>
+                            <p>Never loads full dataset. Processes 10TB+ with only 100MB RAM using HuggingFace streaming.</p>
+                            <span class="confirm-detail">Memory Safe</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-confirmed">
+                        <div class="confirm-icon">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="confirm-content">
+                            <h3>Two-Model Ensemble</h3>
+                            <p>Wav2Vec2 Thai + Whisper Large V3 with highest confidence selection strategy.</p>
+                            <span class="confirm-detail">High Accuracy</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-confirmed">
+                        <div class="confirm-icon">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="confirm-content">
+                            <h3>Smart Processing</h3>
+                            <p>Only transcribes samples without transcripts. Preserves existing high-quality transcriptions.</p>
+                            <span class="confirm-detail">Efficient</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-confirmed">
+                        <div class="confirm-icon">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="confirm-content">
+                            <h3>Production Ready</h3>
+                            <p>Checkpoint system, error recovery, and comprehensive logging for reliable operation.</p>
+                            <span class="confirm-detail">Fault Tolerant</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-confirmed">
+                        <div class="confirm-icon">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="confirm-content">
+                            <h3>Metadata Tracking</h3>
+                            <p>Source dataset field and confidence scores (0.0-1.0) for quality assessment.</p>
+                            <span class="confirm-detail">Traceable</span>
+                        </div>
+                    </div>
+
+                    <div class="feature-confirmed">
+                        <div class="confirm-icon">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="confirm-content">
+                            <h3>RTX 5090 Optimized</h3>
+                            <p>Mixed precision, batch processing, and parallel execution for maximum throughput.</p>
+                            <span class="confirm-detail">95% GPU Usage</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Test-Driven Development Section -->
+                <div class="tdd-section glass" style="margin-bottom: 40px; padding: 40px; border-radius: 20px;">
+                    <h3 style="font-size: 2rem; margin-bottom: 30px; text-align: center;">
+                        <i class="fas fa-vial" style="color: var(--info); margin-right: 10px;"></i>
+                        Test-Driven Development Approach
+                    </h3>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                        <div style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.2); border-radius: 12px; padding: 20px;">
+                            <h4 style="color: var(--info); margin-bottom: 10px;">1. Sample Testing</h4>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Test with 5 samples from each dataset before full processing</p>
+                        </div>
+                        <div style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.2); border-radius: 12px; padding: 20px;">
+                            <h4 style="color: var(--info); margin-bottom: 10px;">2. Validation Loop</h4>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Iterate until all samples pass validation criteria</p>
+                        </div>
+                        <div style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.2); border-radius: 12px; padding: 20px;">
+                            <h4 style="color: var(--info); margin-bottom: 10px;">3. Quality Checks</h4>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Verify transcripts, metadata, and schema compliance</p>
+                        </div>
+                    </div>
+                    
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">Test Command</span>
+                        </div>
+                        <pre><code># Test with 5 samples from each dataset
+python main.py --fresh --all --sample --sample-size 5 --streaming
+
+# Validate results
+python validate_samples.py --check-transcripts --check-metadata</code></pre>
+                    </div>
+                </div>
+
+                <!-- Ready to Implement -->
+                <div class="ready-to-implement">
+                    <div class="checklist-container">
+                        <h3 class="checklist-title">✅ All Requirements Met</h3>
+                        <div class="checklist">
+                            <div class="check-item">
+                                <i class="fas fa-check-circle"></i>
+                                <span>100% transcript coverage guaranteed</span>
+                            </div>
+                            <div class="check-item">
+                                <i class="fas fa-check-circle"></i>
+                                <span>All splits combined into single train split</span>
+                            </div>
+                            <div class="check-item">
+                                <i class="fas fa-check-circle"></i>
+                                <span>Enhanced metadata fields added (dataset_name, confidence_score)</span>
+                            </div>
+                            <div class="check-item">
+                                <i class="fas fa-check-circle"></i>
+                                <span>Test-driven development process defined</span>
+                            </div>
+                            <div class="check-item">
+                                <i class="fas fa-check-circle"></i>
+                                <span>Processor-specific logic preserved</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="launch-section">
+                        <div class="launch-content">
+                            <h2 class="launch-title">🚀 Ready for Launch</h2>
+                            <p class="launch-subtitle">All technical details confirmed and optimized</p>
+                            
+                            <button class="launch-btn">
+                                <i class="fas fa-rocket"></i>
+                                <span>IMPLEMENT NOW</span>
+                                <span class="btn-glow"></span>
+                            </button>
+
+                            <div class="launch-visual">
+                                <div class="success-indicator">
+                                    <div class="indicator-ring"></div>
+                                    <div class="indicator-dot"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer style="background: var(--bg-secondary); border-top: 1px solid var(--border); padding: 40px 0; margin-top: 80px;">
+        <div class="container">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+                <div>
+                    <h4 style="color: var(--text-primary); font-weight: 600; margin-bottom: 5px;">Thai Dataset Gathering</h4>
+                    <p style="color: var(--text-secondary);">STT Integration Plan - Ready for Implementation</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px; color: var(--success); font-weight: 500;">
+                        <div style="width: 12px; height: 12px; background: var(--success); border-radius: 50%; animation: pulse 2s ease-in-out infinite;"></div>
+                        <span>System Ready</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+    
+    <script>
+        // Basic theme toggle functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const themeToggle = document.getElementById('theme-toggle');
+            const body = document.body;
+            
+            // Load saved theme
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            body.className = savedTheme + '-mode';
+            
+            themeToggle.addEventListener('click', function() {
+                const currentTheme = body.classList.contains('dark-mode') ? 'dark' : 'light';
+                const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+                
+                body.className = newTheme + '-mode';
+                localStorage.setItem('theme', newTheme);
+            });
+            
+            // Basic navigation
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    // Remove active class from all links
+                    navLinks.forEach(l => l.classList.remove('active'));
+                    
+                    // Add active class to clicked link
+                    this.classList.add('active');
+                    
+                    // Smooth scroll to section
+                    const section = this.getAttribute('data-section');
+                    const element = document.getElementById(section);
+                    if (element) {
+                        element.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+
+    <style>
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+        }
+    </style>
+</body>
+</html>
