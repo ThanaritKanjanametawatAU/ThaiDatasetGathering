@@ -290,7 +290,8 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
         uploader = StreamingUploader(
             repo_id=TARGET_DATASET["name"],
             token=token,
-            private=args.private
+            private=args.private,
+            append_mode=args.append
         )
     
     # Track global sample ID

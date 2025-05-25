@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class StreamingUploader:
     """Handles streaming upload of dataset shards to Hugging Face."""
     
-    def __init__(self, repo_id: str, token: Optional[str] = None, private: bool = False):
+    def __init__(self, repo_id: str, token: Optional[str] = None, private: bool = False, append_mode: bool = False):
         """
         Initialize streaming uploader.
         
@@ -27,10 +27,12 @@ class StreamingUploader:
             repo_id: Hugging Face repository ID
             token: Hugging Face token
             private: Whether to make the dataset private
+            append_mode: Whether to append to existing dataset (preserves existing shards)
         """
         self.repo_id = repo_id
         self.token = token
         self.private = private
+        self.append_mode = append_mode
         self.api = HfApi(token=token)
         self.shard_num = 0
         self.total_samples = 0
@@ -47,6 +49,48 @@ class StreamingUploader:
         except Exception as e:
             logger.error(f"Failed to create/access repository: {str(e)}")
             raise
+        
+        # If append mode, find the highest existing shard number
+        if self.append_mode:
+            existing_shards = self._get_existing_shard_numbers()
+            if existing_shards:
+                self.shard_num = max(existing_shards) + 1
+                logger.info(f"Append mode: Starting from shard {self.shard_num:05d}")
+            else:
+                logger.info("Append mode: No existing shards found, starting from shard 0")
+    
+    def _get_existing_shard_numbers(self) -> List[int]:
+        """
+        Get list of existing shard numbers in the repository.
+        
+        Returns:
+            List of shard numbers found in the repository
+        """
+        try:
+            # List all files in the repository
+            files = self.api.list_repo_files(
+                repo_id=self.repo_id,
+                repo_type="dataset"
+            )
+            
+            shard_numbers = []
+            for file_path in files:
+                # Look for shard files in data/train/ directory
+                if file_path.startswith("data/train/shard_") and file_path.endswith(".parquet"):
+                    # Extract shard number from filename
+                    # Format: data/train/shard_00000.parquet
+                    try:
+                        shard_part = file_path.replace("data/train/shard_", "").replace(".parquet", "")
+                        shard_num = int(shard_part)
+                        shard_numbers.append(shard_num)
+                    except ValueError:
+                        # Skip files that don't match the expected pattern
+                        continue
+            
+            return shard_numbers
+        except Exception as e:
+            logger.warning(f"Error listing existing shards: {str(e)}. Starting from shard 0.")
+            return []
     
     def upload_batch(self, samples: List[Dict[str, Any]], shard_num: Optional[int] = None) -> Tuple[bool, str]:
         """
