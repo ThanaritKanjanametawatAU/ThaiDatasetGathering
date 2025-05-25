@@ -1,5 +1,19 @@
 # Change Log
 
+## 2025-05-25
+
+### Added (Speaker Identification Feature)
+- Implemented speaker identification and clustering system
+- Added `speaker_id` field to dataset schema (format: SPK_00001, SPK_00002, etc.)
+- Created `processors/speaker_identification.py` module with:
+  - Speaker embedding extraction using pyannote/embedding model
+  - HDBSCAN clustering for identifying unique speakers
+  - Support for both cached and streaming modes
+- Updated all dataset processors to generate speaker IDs
+- Added comprehensive tests for speaker identification
+- Updated HuggingFace dataset card metadata to include speaker_id field
+- Full schema validation for speaker_id across all processors
+
 ## 2023-05-19
 
 ### Added (Project Summary)
