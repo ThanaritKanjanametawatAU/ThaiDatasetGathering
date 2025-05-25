@@ -129,7 +129,7 @@ python main.py --fresh --all --sample --sample-size 10
 
 **Speech-to-Text Options:**
 - `--no-stt`: Disable Speech-to-Text processing
-- `--enable-stt`: Enable Speech-to-Text processing for missing transcripts
+- `--enable-stt`: Enable Speech-to-Text processing for missing transcripts (automatically fills blank transcripts)
 - `--stt-batch-size N`: Batch size for STT processing (default: 16)
 
 **Other Options:**

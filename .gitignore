@@ -6,6 +6,7 @@ data/
 checkpoints/
 logs/
 *.log
+cache/
 
 # Python bytecode and cache
 __pycache__/

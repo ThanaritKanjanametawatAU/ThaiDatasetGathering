@@ -18,6 +18,12 @@ You can Check the pushed dataset on https://huggingface.co/datasets/Thanarit/Tha
 
 ## Recent Updates (January 2025)
 
+### GigaSpeech2 Native Transcript Support
+- Implemented native TSV transcript loading from GigaSpeech2's `text` column
+- No longer requires external transcript mapping files
+- Transcripts are loaded directly from the dataset's TSV files
+- Improved reliability and reduced external dependencies
+
 ### Audio Format Standardization
 The project has been updated to use HuggingFace's native audio format for better compatibility with the platform's audio preview features. All processors now:
 - Output audio as a dictionary with `{'array': np.array, 'sampling_rate': int, 'path': str}` format
@@ -41,6 +47,8 @@ The project has been updated to use HuggingFace's native audio format for better
 - Optional STT processing for samples without transcripts
 - Command-line flags: `--enable-stt`, `--no-stt`, `--stt-batch-size`
 - Ensemble STT model support for improved accuracy
+- **Fixed (Jan 2025)**: STT now properly fills empty transcripts when `--enable-stt` flag is used
+- Automatic detection and processing of samples with blank transcripts
 
 ## Architecture
 
