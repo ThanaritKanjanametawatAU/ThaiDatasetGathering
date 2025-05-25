@@ -5,7 +5,7 @@ Streaming utilities for processing large datasets without full downloads.
 import os
 import logging
 from typing import Dict, Any, Iterator, Optional, List, Tuple
-from datasets import load_dataset, Dataset, IterableDataset
+from datasets import load_dataset, Dataset, IterableDataset, Features, Value, Audio
 from huggingface_hub import HfApi, upload_file
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -114,8 +114,52 @@ class StreamingUploader:
         temp_path = f"/tmp/{shard_filename}"
         
         try:
-            # Convert samples to Dataset
-            dataset = Dataset.from_list(samples)
+            # Process audio data to ensure it's in the correct format
+            processed_samples = []
+            for sample in samples:
+                processed_sample = sample.copy()
+                
+                # Ensure audio is in the correct format
+                if "audio" in processed_sample and isinstance(processed_sample["audio"], dict):
+                    audio_data = processed_sample["audio"]
+                    
+                    # If audio has array, convert to bytes for storage
+                    if "array" in audio_data and audio_data["array"] is not None:
+                        import soundfile as sf
+                        import io
+                        import numpy as np
+                        
+                        # Get audio array and sampling rate
+                        audio_array = np.array(audio_data["array"], dtype=np.float32)
+                        sampling_rate = audio_data.get("sampling_rate", 16000)
+                        
+                        # Convert to WAV bytes
+                        buffer = io.BytesIO()
+                        sf.write(buffer, audio_array, sampling_rate, format='WAV', subtype='PCM_16')
+                        audio_bytes = buffer.getvalue()
+                        
+                        # Store as bytes with path for HuggingFace compatibility
+                        processed_sample["audio"] = {
+                            "bytes": audio_bytes,
+                            "path": audio_data.get("path", f"{sample.get('ID', 'unknown')}.wav")
+                        }
+                
+                processed_samples.append(processed_sample)
+            
+            # Define features for the dataset
+            features = Features({
+                "ID": Value("string"),
+                "speaker_id": Value("string"),
+                "Language": Value("string"),
+                "audio": Audio(sampling_rate=16000),
+                "transcript": Value("string"),
+                "length": Value("float32"),
+                "dataset_name": Value("string"),
+                "confidence_score": Value("float64")
+            })
+            
+            # Convert samples to Dataset with explicit features
+            dataset = Dataset.from_list(processed_samples, features=features)
             
             # Save as parquet
             dataset.to_parquet(temp_path)

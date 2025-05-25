@@ -89,14 +89,19 @@ def create_hf_dataset(
             # Define features explicitly to ensure proper Audio type
             features = Features({
                 "ID": Value("string"),
+                "speaker_id": Value("string"),
                 "Language": Value("string"), 
                 "audio": Audio(sampling_rate=16000),  # Explicitly set audio feature
                 "transcript": Value("string"),
-                "length": Value("float32")
+                "length": Value("float32"),
+                "dataset_name": Value("string"),
+                "confidence_score": Value("float64")
             })
         
         # Create dataset with explicit features
-        data_dict = {key: [sample.get(key) for sample in samples_list] for key in ["ID", "Language", "audio", "transcript", "length"]}
+        # Get all keys from features
+        feature_keys = list(features.keys()) if features else ["ID", "speaker_id", "Language", "audio", "transcript", "length", "dataset_name", "confidence_score"]
+        data_dict = {key: [sample.get(key) for sample in samples_list] for key in feature_keys}
         dataset = Dataset.from_dict(data_dict, features=features)
         
         logger.info(f"Created dataset with {len(dataset)} samples")
