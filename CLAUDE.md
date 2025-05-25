@@ -50,6 +50,20 @@ The project has been updated to use HuggingFace's native audio format for better
 - **Fixed (Jan 2025)**: STT now properly fills empty transcripts when `--enable-stt` flag is used
 - Automatic detection and processing of samples with blank transcripts
 
+### Streaming Mode Append Functionality (Jan 2025)
+- **Fixed**: `--append` flag now correctly appends to existing datasets without overwriting
+- StreamingUploader detects existing shard numbers and continues from the next available shard
+- Preserves existing data when adding new samples
+- Maintains sequential ID numbering across append operations
+
+### Multi-Dataset Checkpoint System
+- Each dataset maintains independent checkpoint files (`{dataset_name}_unified_checkpoint.json`)
+- Supports interruption and resumption across multiple datasets with `--resume` flag
+- Automatically skips completed datasets when resuming
+- Preserves progress within partially processed datasets
+- Checkpoint includes: samples processed, current split, split index, and dataset-specific data
+- No global checkpoint needed - each dataset tracks its own progress independently
+
 ## Architecture
 
 ### Core Components
@@ -165,6 +179,8 @@ python -m unittest tests.test_streaming
 python -m unittest tests.test_streaming_integration
 python -m unittest tests.test_checkpoint_system
 python -m unittest tests.test_complete_workflow
+python -m unittest tests.test_streaming_append
+python -m unittest tests.test_multi_dataset_checkpoint
 ```
 
 ## Dataset Schema
