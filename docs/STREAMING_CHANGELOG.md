@@ -7,9 +7,11 @@ Added streaming mode support to process large datasets without requiring full do
 
 ### 1. Base Processor Enhancement (`processors/base_processor.py`)
 - **Added**: Streaming configuration parameters (batch_size, shard_size, upload_batch_size)
-- **Added**: `process_streaming()` abstract method for streaming implementation
-- **Added**: `save_streaming_checkpoint()` and `load_streaming_checkpoint()` methods
-- **Feature**: Separate checkpoint system for streaming mode with shard tracking
+- **Added**: `process_all_splits()` method as main entry point for streaming mode
+- **Added**: `process_streaming()` method for processing individual splits
+- **Added**: Unified checkpoint system (v2.0) that works for both streaming and cached modes
+- **Feature**: Backward compatibility with legacy checkpoint formats
+- **Feature**: Helper methods for consistent audio processing and format conversion
 
 ### 2. Main Processing Logic (`main.py`)
 - **Added**: `--streaming` command line flag to enable streaming mode
@@ -57,8 +59,11 @@ STREAMING_CONFIG = {
 
 ### 6. Testing Infrastructure
 - **New**: `tests/test_streaming.py` - Comprehensive unit tests
-- **New**: `test_streaming_demo.py` - Interactive demo script
-- Tests cover checkpoint resume, batch processing, and all processors
+- **New**: `tests/test_streaming_integration.py` - Integration tests for streaming mode
+- **New**: `tests/test_checkpoint_system.py` - Tests for unified checkpoint system
+- **New**: `tests/test_complete_workflow.py` - End-to-end workflow tests
+- **Updated**: All existing tests to work with unified checkpoint format
+- Tests cover checkpoint resume, batch processing, schema validation, and all processors
 
 ## Usage Examples
 
@@ -102,18 +107,28 @@ python main.py --fresh --all --streaming --sample --sample-size 10
 3. **Checkpointing**: Saves progress after each shard upload
 4. **Error Handling**: Continues processing on sample errors, fails gracefully on critical errors
 
-### Checkpoint Format
+### Unified Checkpoint Format (v2.0)
 ```json
 {
-    "mode": "streaming",
-    "shard_num": 5,
+    "version": "2.0",
+    "mode": "unified",
+    "processor": "GigaSpeech2",
     "samples_processed": 50000,
+    "split_index": 0,
+    "split_name": "train",
+    "processed_ids": ["S1", "S2", ..., "S50000"],
+    "shard_num": 5,
     "last_sample_id": "S50000",
     "dataset_specific": {},
-    "timestamp": 1234567890,
-    "processor": "GigaSpeech2"
+    "timestamp": 1234567890
 }
 ```
+
+**Key Changes**:
+- Unified format for both streaming and cached modes
+- Version tracking for format compatibility
+- Consistent field naming across all modes
+- Automatic conversion of legacy checkpoints
 
 ### Shard Upload Process
 1. Accumulate samples in buffer
@@ -136,6 +151,14 @@ python main.py --fresh --all --streaming --sample --sample-size 10
 1. **Network Dependency**: Requires stable internet throughout processing
 2. **Processing Speed**: Slower than cached mode due to streaming overhead
 3. **VISTEC Dataset**: Still requires initial download (file-based dataset)
+
+## Recent Improvements (January 2025)
+
+1. **Unified Checkpoint System**: Single checkpoint format for both streaming and cached modes
+2. **Schema Enhancements**: Added `dataset_name` and `confidence_score` fields
+3. **Speech-to-Text Integration**: Optional STT processing for missing transcripts
+4. **Improved Test Coverage**: Comprehensive test suite with 49+ tests
+5. **Better Error Handling**: More robust error recovery and logging
 
 ## Future Enhancements
 
