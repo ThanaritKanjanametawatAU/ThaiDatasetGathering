@@ -287,8 +287,9 @@ class TestStreamingIntegration(unittest.TestCase):
         # Mock processor
         mock_processor = MagicMock()
         mock_processor.name = "TestProcessor"
-        mock_processor.process_streaming.return_value = iter([
-            {"ID": "temp_1", "Language": "th", "audio": {}, "transcript": "test", "length": 1.0}
+        mock_processor.process_all_splits.return_value = iter([
+            {"ID": "temp_1", "Language": "th", "audio": {}, "transcript": "test", "length": 1.0,
+             "dataset_name": "TestDataset", "confidence_score": 1.0}
         ])
         mock_processor.save_streaming_checkpoint = MagicMock()
         mock_create_processor.return_value = mock_processor
@@ -308,6 +309,9 @@ class TestStreamingIntegration(unittest.TestCase):
             sample_rate = 16000
             target_db = -20.0
             no_volume_norm = False
+            no_stt = True  # Add missing attribute
+            enable_stt = False
+            stt_batch_size = 16
         
         args = Args()
         dataset_names = ["TestDataset"]
@@ -316,7 +320,7 @@ class TestStreamingIntegration(unittest.TestCase):
         result = process_streaming_mode(args, dataset_names)
         
         self.assertEqual(result, 0)  # SUCCESS
-        mock_processor.process_streaming.assert_called_once()
+        mock_processor.process_all_splits.assert_called_once()
         mock_uploader.upload_dataset_card.assert_called_once()
 
 

@@ -72,7 +72,7 @@ class TestStreamingIntegration(unittest.TestCase):
                 })
             return iter(samples)
         
-        mock_processor.process_streaming.side_effect = sample_generator
+        mock_processor.process_all_splits.side_effect = sample_generator
         mock_processor.save_streaming_checkpoint.return_value = None
         mock_create_processor.return_value = mock_processor
         
@@ -93,6 +93,9 @@ class TestStreamingIntegration(unittest.TestCase):
         args.no_volume_norm = False
         args.target_db = -20
         args.verbose = True
+        args.no_stt = True
+        args.enable_stt = False
+        args.stt_batch_size = 16
         
         # Run streaming mode
         dataset_names = ["TestDataset"]
@@ -109,7 +112,7 @@ class TestStreamingIntegration(unittest.TestCase):
         self.assertEqual(processor_config["upload_batch_size"], 3)
         
         # Verify samples were processed
-        mock_processor.process_streaming.assert_called_once_with(
+        mock_processor.process_all_splits.assert_called_once_with(
             checkpoint=None,
             sample_mode=True,
             sample_size=5
@@ -165,7 +168,7 @@ class TestStreamingIntegration(unittest.TestCase):
                     "length": 1.5
                 }
         
-        mock_processor.process_streaming.side_effect = full_generator
+        mock_processor.process_all_splits.side_effect = full_generator
         mock_processor.save_streaming_checkpoint.return_value = None
         mock_create_processor.return_value = mock_processor
         
@@ -186,6 +189,9 @@ class TestStreamingIntegration(unittest.TestCase):
         args.no_volume_norm = False
         args.target_db = -20
         args.verbose = True
+        args.no_stt = True
+        args.enable_stt = False
+        args.stt_batch_size = 16
         
         # Run streaming mode
         dataset_names = ["TestDataset"]
@@ -195,7 +201,7 @@ class TestStreamingIntegration(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         
         # Verify samples were processed without sample mode
-        mock_processor.process_streaming.assert_called_once_with(
+        mock_processor.process_all_splits.assert_called_once_with(
             checkpoint=None,
             sample_mode=False,
             sample_size=5  # Should be passed but ignored
@@ -261,7 +267,7 @@ class TestStreamingIntegration(unittest.TestCase):
                         "length": 1.5
                     }
             
-            mock_processor.process_streaming.side_effect = dataset_generator
+            mock_processor.process_all_splits.side_effect = dataset_generator
             created_processors.append(mock_processor)
             return mock_processor
         
@@ -284,6 +290,9 @@ class TestStreamingIntegration(unittest.TestCase):
         args.no_volume_norm = False
         args.target_db = -20
         args.verbose = True
+        args.no_stt = True
+        args.enable_stt = False
+        args.stt_batch_size = 16
         
         # Run with all datasets
         dataset_names = list(config.DATASET_CONFIG.keys())
@@ -292,17 +301,17 @@ class TestStreamingIntegration(unittest.TestCase):
         # Verify success
         self.assertEqual(exit_code, 0)
         
-        # Verify all datasets were processed
-        self.assertEqual(len(created_processors), 4)
+        # Verify all datasets were processed (3 datasets now after VISTEC removal)
+        self.assertEqual(len(created_processors), 3)
         for processor in created_processors:
-            processor.process_streaming.assert_called_once()
+            processor.process_all_splits.assert_called_once()
         
-        # Verify total samples (4 datasets * 3 samples = 12)
+        # Verify total samples (3 datasets * 3 samples = 9)
         total_samples = 0
         for call_args in mock_uploader.upload_batch.call_args_list:
             batch = call_args[0][0]
             total_samples += len(batch)
-        self.assertEqual(total_samples, 12)
+        self.assertEqual(total_samples, 9)
     
     @patch('sys.argv', ['main.py', '--fresh', '--all', '--streaming', '--sample', '--sample-size', '5'])
     @patch('main.process_streaming_mode')

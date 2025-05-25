@@ -100,8 +100,21 @@ class TestMozillaCommonVoiceProcessor(unittest.TestCase):
         mock_load_dataset.assert_called_once()
     
     @patch('processors.mozilla_cv.get_audio_length')
-    def test_convert_sample(self, mock_get_audio_length):
+    @patch.object(MozillaCommonVoiceProcessor, 'preprocess_audio')
+    @patch.object(MozillaCommonVoiceProcessor, 'create_hf_audio_format')
+    def test_convert_sample(self, mock_create_hf_audio, mock_preprocess_audio, mock_get_audio_length):
         """Test _convert_sample."""
+        # Mock audio preprocessing
+        mock_preprocess_audio.return_value = b'preprocessed_audio'
+        
+        # Mock HF audio format creation
+        mock_hf_audio = {
+            "array": [0.1, 0.2, 0.3],
+            "sampling_rate": 16000,
+            "path": "S123.wav"
+        }
+        mock_create_hf_audio.return_value = mock_hf_audio
+        
         # Mock get_audio_length
         mock_get_audio_length.return_value = 2.5
         
@@ -119,10 +132,14 @@ class TestMozillaCommonVoiceProcessor(unittest.TestCase):
         # Check result
         self.assertEqual(result["ID"], "S123")
         self.assertEqual(result["Language"], "th")
-        self.assertEqual(result["audio"], b'test_audio')
+        self.assertEqual(result["audio"], mock_hf_audio)
         self.assertEqual(result["transcript"], "test sentence")
         self.assertEqual(result["length"], 2.5)
-        mock_get_audio_length.assert_called_once_with(b'test_audio')
+        
+        # Verify method calls
+        mock_preprocess_audio.assert_called_once_with(b'test_audio', 'S123')
+        mock_create_hf_audio.assert_called_once_with(b'preprocessed_audio', 'S123')
+        mock_get_audio_length.assert_called_once_with(mock_hf_audio)
     
     @patch('processors.mozilla_cv.get_audio_length')
     def test_convert_sample_missing_audio(self, mock_get_audio_length):
@@ -142,8 +159,21 @@ class TestMozillaCommonVoiceProcessor(unittest.TestCase):
         mock_get_audio_length.assert_not_called()
     
     @patch('processors.mozilla_cv.get_audio_length')
-    def test_convert_sample_missing_length(self, mock_get_audio_length):
+    @patch.object(MozillaCommonVoiceProcessor, 'preprocess_audio')
+    @patch.object(MozillaCommonVoiceProcessor, 'create_hf_audio_format')
+    def test_convert_sample_missing_length(self, mock_create_hf_audio, mock_preprocess_audio, mock_get_audio_length):
         """Test _convert_sample with missing length."""
+        # Mock audio preprocessing
+        mock_preprocess_audio.return_value = b'preprocessed_audio'
+        
+        # Mock HF audio format creation
+        mock_hf_audio = {
+            "array": [0.1, 0.2, 0.3],
+            "sampling_rate": 16000,
+            "path": "S123.wav"
+        }
+        mock_create_hf_audio.return_value = mock_hf_audio
+        
         # Mock get_audio_length to return None
         mock_get_audio_length.return_value = None
         
@@ -159,8 +189,10 @@ class TestMozillaCommonVoiceProcessor(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.processor._convert_sample(sample, 123)
         
-        # Check that get_audio_length was called
-        mock_get_audio_length.assert_called_once_with(b'test_audio')
+        # Check that methods were called in order
+        mock_preprocess_audio.assert_called_once_with(b'test_audio', 'S123')
+        mock_create_hf_audio.assert_called_once_with(b'preprocessed_audio', 'S123')
+        mock_get_audio_length.assert_called_once_with(mock_hf_audio)
 
 if __name__ == '__main__':
     unittest.main()

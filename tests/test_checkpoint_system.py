@@ -336,7 +336,21 @@ class TestGigaSpeech2CheckpointIntegration(unittest.TestCase):
     @patch('processors.gigaspeech2.load_dataset')
     def test_gigaspeech2_checkpoint_resume(self, mock_load_dataset):
         """Test GigaSpeech2 processor checkpoint resume functionality."""
-        # Mock dataset
+        # Create a proper iterable dataset mock
+        class MockIterableDataset:
+            def __init__(self, samples):
+                self.samples = samples
+                self.filter_called = False
+                
+            def __iter__(self):
+                # Return fresh iterator each time
+                return iter(self.samples)
+                
+            def filter(self, *args, **kwargs):
+                self.filter_called = True
+                return self
+        
+        # Mock samples
         mock_samples = [
             {
                 "id": f"sample_{i}",
@@ -348,36 +362,53 @@ class TestGigaSpeech2CheckpointIntegration(unittest.TestCase):
             for i in range(10)
         ]
         
-        # Create mock dataset that returns samples
-        mock_dataset = MagicMock()
-        mock_dataset.__iter__ = lambda self: iter(mock_samples)
-        mock_dataset.filter = lambda *args, **kwargs: mock_dataset
-        mock_load_dataset.return_value = mock_dataset
+        # Create mock dataset
+        mock_dataset = MockIterableDataset(mock_samples)
+        
+        # Mock load_dataset to return our mock for any split
+        def mock_load_fn(*args, **kwargs):
+            if kwargs.get('streaming', False):
+                # Return fresh dataset instance for each call
+                return MockIterableDataset(mock_samples)
+            return mock_dataset
+            
+        mock_load_dataset.side_effect = mock_load_fn
         
         processor = GigaSpeech2Processor(self.config)
         
-        # Process first batch
+        # Process first batch using streaming mode directly
         samples_before = []
-        for i, sample in enumerate(processor.process_all_splits(sample_mode=True, sample_size=10)):
+        sample_count = 0
+        checkpoint_file = None
+        
+        for sample in processor.process_streaming(sample_mode=True, sample_size=10):
             samples_before.append(sample["ID"])
-            if i == 4:  # Stop after 5 samples
+            sample_count += 1
+            if sample_count == 5:  # Stop after 5 samples
                 # Save checkpoint
                 checkpoint_file = processor.save_unified_checkpoint(
                     samples_processed=5,
                     current_split="train",
                     split_index=5,
+                    last_sample_id=sample["ID"],
                     processed_ids=samples_before
                 )
                 break
         
+        self.assertEqual(len(samples_before), 5)
+        self.assertIsNotNone(checkpoint_file)
+        
         # Resume from checkpoint
         samples_after = []
-        for sample in processor.process_all_splits(
+        for sample in processor.process_streaming(
             checkpoint=checkpoint_file,
             sample_mode=True,
             sample_size=10
         ):
             samples_after.append(sample["ID"])
+        
+        # Should get 5 more samples (10 total minus 5 already processed)
+        self.assertEqual(len(samples_after), 5)
         
         # Check no duplicates
         all_samples = samples_before + samples_after

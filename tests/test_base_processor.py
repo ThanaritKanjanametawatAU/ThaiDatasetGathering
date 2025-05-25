@@ -58,7 +58,9 @@ class TestBaseProcessor(unittest.TestCase):
             "Language": "th",
             "audio": {"path": "test.wav", "bytes": b'test'},
             "transcript": "test",
-            "length": 1.0
+            "length": 1.0,
+            "dataset_name": "TestDataset",
+            "confidence_score": 1.0
         }
         
         with patch('processors.base_processor.is_valid_audio', return_value=True):
@@ -94,12 +96,13 @@ class TestBaseProcessor(unittest.TestCase):
         # Load checkpoint
         loaded_data = self.processor.load_checkpoint(checkpoint_file)
         
-        # Check data
-        self.assertEqual(loaded_data["processed_count"], checkpoint_data["processed_count"])
-        self.assertEqual(loaded_data["current_index"], checkpoint_data["current_index"])
+        # Check data - the unified format converts old keys
+        self.assertEqual(loaded_data["samples_processed"], checkpoint_data["processed_count"])
+        self.assertEqual(loaded_data["split_index"], checkpoint_data["current_index"])
         self.assertEqual(loaded_data["processed_ids"], checkpoint_data["processed_ids"])
-        self.assertIn("metadata", loaded_data)
-        self.assertEqual(loaded_data["metadata"]["processor"], "TestProcessor")
+        # In unified format, processor is at top level
+        self.assertEqual(loaded_data["processor"], "TestProcessor")
+        self.assertEqual(loaded_data["mode"], "unified")
     
     def test_load_checkpoint_invalid(self):
         """Test load_checkpoint with invalid file."""
@@ -107,11 +110,15 @@ class TestBaseProcessor(unittest.TestCase):
         loaded_data = self.processor.load_checkpoint("non_existent_file.json")
         self.assertIsNone(loaded_data)
         
-        # Test with invalid content
+        # Test with invalid content - checkpoint from different processor
         invalid_file = os.path.join(self.processor.checkpoint_dir, "invalid.json")
         os.makedirs(self.processor.checkpoint_dir, exist_ok=True)
         with open(invalid_file, 'w') as f:
-            f.write('{"metadata": {"processor": "OtherProcessor"}}')
+            json.dump({
+                "metadata": {"processor": "OtherProcessor", "version": "2.0"},
+                "samples_processed": 10,
+                "mode": "unified"
+            }, f)
         
         loaded_data = self.processor.load_checkpoint(invalid_file)
         self.assertIsNone(loaded_data)
@@ -126,7 +133,7 @@ class TestBaseProcessor(unittest.TestCase):
         self.assertIsNone(latest)
         
         # Create checkpoints
-        checkpoint1 = self.processor.save_checkpoint(checkpoint_data)
+        self.processor.save_checkpoint(checkpoint_data)
         import time
         time.sleep(0.1)  # Ensure different modification times
         checkpoint2 = self.processor.save_checkpoint(checkpoint_data)
