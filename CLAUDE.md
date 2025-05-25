@@ -50,6 +50,7 @@ The project has been updated to use HuggingFace's native audio format for better
 ### Schema Enhancements
 - Added `dataset_name` field to track source dataset
 - Added `confidence_score` field for transcript reliability (1.0 for original transcripts)
+- Added `speaker_id` field for speaker tracking (SPK_00001, SPK_00002, ...)
 - Full schema validation across all processors
 
 ### Speech-to-Text Integration
@@ -72,6 +73,15 @@ The project has been updated to use HuggingFace's native audio format for better
 - Preserves progress within partially processed datasets
 - Checkpoint includes: samples processed, current split, split index, and dataset-specific data
 - No global checkpoint needed - each dataset tracks its own progress independently
+
+### Speaker Identification (January 2025)
+- Automatic speaker identification and clustering across all audio samples
+- Uses pyannote/embedding model for speaker embeddings
+- HDBSCAN clustering for identifying unique speakers
+- Generates consistent speaker IDs (SPK_00001, SPK_00002, etc.)
+- Each processor implements speaker ID generation
+- Speaker IDs are preserved across dataset processing runs
+- Supports both cached and streaming modes
 
 ## Architecture
 
@@ -196,11 +206,16 @@ python -m unittest tests.test_checkpoint_system
 python -m unittest tests.test_complete_workflow
 python -m unittest tests.test_streaming_append
 python -m unittest tests.test_multi_dataset_checkpoint
+python -m unittest tests.test_speaker_identification
+python -m unittest tests.test_speaker_id_streaming
+python -m unittest tests.test_huggingface_schema
+python -m unittest tests.test_huggingface_schema_complete
 ```
 
 ## Dataset Schema
 
 - **ID**: Sequential identifiers (S1, S2, S3, ...) globally unique across all datasets
+- **speaker_id**: Speaker identifier (SPK_00001, SPK_00002, ...) for speaker tracking
 - **Language**: "th" for Thai
 - **audio**: Audio data in HuggingFace format:
   ```python

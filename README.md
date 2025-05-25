@@ -5,6 +5,7 @@ A modular system to gather Thai audio data from multiple sources and combine the
 ## Dataset Schema
 
 - **ID**: Sequential identifiers (S1, S2, S3, ...) globally unique across all datasets
+- **speaker_id**: Speaker identifier (SPK_00001, SPK_00002, ...) for speaker tracking
 - **Language**: "th" for Thai
 - **audio**: Audio data in HuggingFace format (dict with array, sampling_rate, and path)
 - **transcript**: Transcript of the audio if available
