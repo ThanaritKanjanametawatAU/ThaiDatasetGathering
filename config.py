@@ -50,6 +50,7 @@ TARGET_DATASET = {
 # Schema configuration
 SCHEMA = {
     "ID": str,          # Sequential ID (S1, S2, ...)
+    "speaker_id": str,  # Speaker identifier (SPK_00001, SPK_00002, ...)
     "Language": str,    # Always "th" for Thai
     "audio": dict,      # Audio data in HuggingFace format (array, sampling_rate, path)
     "transcript": str,  # Transcript text
@@ -57,6 +58,9 @@ SCHEMA = {
     "dataset_name": str,        # Source dataset name (NEW)
     "confidence_score": float,  # STT confidence score 0.0-1.0 (NEW)
 }
+
+# Export TARGET_SCHEMA for compatibility
+TARGET_SCHEMA = SCHEMA
 
 # Validation rules
 VALIDATION_RULES = {
@@ -98,6 +102,11 @@ VALIDATION_RULES = {
         "min_value": 0.0,
         "max_value": 1.0,
         "error_message": "Confidence score must be between 0.0 and 1.0"
+    },
+    "speaker_id": {
+        "required": True,
+        "pattern": r"^SPK_\d{5}$",
+        "error_message": "Speaker ID must be in format 'SPK_XXXXX' where X is a digit"
     }
 }
 
@@ -161,4 +170,25 @@ STT_CONFIG = {
     "fallback_transcript": "[INAUDIBLE]",  # Used when STT fails
     "error_transcript": "[STT_ERROR]",     # Used when STT crashes
     "no_audio_transcript": "[NO_AUDIO]",   # Used when audio is missing
+}
+
+# Speaker Identification Configuration
+SPEAKER_ID_CONFIG = {
+    "enabled": False,  # Default disabled, enable with --enable-speaker-id
+    "model": "pyannote/embedding",
+    "embedding_dim": 512,
+    "batch_size": 10000,
+    "clustering": {
+        "algorithm": "hdbscan",
+        "min_cluster_size": 15,
+        "min_samples": 10,
+        "metric": "cosine",
+        "cluster_selection_epsilon": 0.3,
+        "similarity_threshold": 0.7
+    },
+    "storage": {
+        "store_embeddings": False,
+        "embedding_format": "hdf5",
+        "compression": "gzip"
+    }
 }

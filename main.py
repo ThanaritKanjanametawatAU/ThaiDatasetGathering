@@ -72,6 +72,55 @@ def parse_arguments() -> argparse.Namespace:
     
     # HuggingFace repository options
     parser.add_argument("--hf-repo", type=str, help="HuggingFace repository to push dataset to (e.g., 'username/dataset-name')")
+    
+    # Speaker identification arguments
+    speaker_group = parser.add_argument_group('Speaker Identification')
+    speaker_group.add_argument(
+        '--enable-speaker-id',
+        action='store_true',
+        help='Enable speaker identification and clustering'
+    )
+    speaker_group.add_argument(
+        '--speaker-model',
+        type=str,
+        default='pyannote/embedding',
+        help='Speaker embedding model to use (default: pyannote/embedding)'
+    )
+    speaker_group.add_argument(
+        '--speaker-batch-size',
+        type=int,
+        default=10000,
+        help='Batch size for speaker clustering (default: 10000)'
+    )
+    speaker_group.add_argument(
+        '--speaker-threshold',
+        type=float,
+        default=0.7,
+        help='Similarity threshold for existing cluster assignment (default: 0.7)'
+    )
+    speaker_group.add_argument(
+        '--store-embeddings',
+        action='store_true',
+        help='Store speaker embeddings for future use'
+    )
+    speaker_group.add_argument(
+        '--speaker-min-cluster-size',
+        type=int,
+        default=15,
+        help='Minimum cluster size for HDBSCAN (default: 15)'
+    )
+    speaker_group.add_argument(
+        '--speaker-min-samples',
+        type=int,
+        default=10,
+        help='Minimum samples for core points in HDBSCAN (default: 10)'
+    )
+    speaker_group.add_argument(
+        '--speaker-epsilon',
+        type=float,
+        default=0.3,
+        help='Cluster selection epsilon for HDBSCAN (default: 0.3)'
+    )
 
     args = parser.parse_args()
 
@@ -311,6 +360,28 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
     
     current_id = start_id
     
+    # Initialize speaker identification if enabled
+    speaker_identifier = None
+    embedding_buffer = []
+    
+    if args.enable_speaker_id:
+        from processors.speaker_identification import SpeakerIdentification
+        
+        speaker_config = {
+            'model': args.speaker_model,
+            'batch_size': args.speaker_batch_size,
+            'min_cluster_size': args.speaker_min_cluster_size,
+            'min_samples': args.speaker_min_samples,
+            'epsilon': args.speaker_epsilon,
+            'threshold': args.speaker_threshold,
+            'store_embeddings': args.store_embeddings,
+            'embedding_path': os.path.join(args.output or '.', 'speaker_embeddings.h5'),
+            'model_path': os.path.join(CHECKPOINT_DIR, 'speaker_model.json')
+        }
+        
+        speaker_identifier = SpeakerIdentification(speaker_config)
+        logger.info("Initialized speaker identification system")
+    
     # Process each dataset
     total_samples = 0
     batch_buffer = []
@@ -355,7 +426,28 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 sample["ID"] = f"S{current_id}"
                 current_id += 1
                 
-                batch_buffer.append(sample)
+                # Add to embedding buffer if speaker ID enabled
+                if speaker_identifier:
+                    embedding_buffer.append(sample)
+                
+                # Process speaker IDs when buffer is full
+                if speaker_identifier and len(embedding_buffer) >= args.speaker_batch_size:
+                    logger.info(f"Processing speaker identification batch of {len(embedding_buffer)} samples")
+                    
+                    # Get speaker IDs for the batch
+                    speaker_ids = speaker_identifier.process_batch(embedding_buffer)
+                    
+                    # Assign speaker IDs to samples
+                    for sample, speaker_id in zip(embedding_buffer, speaker_ids):
+                        sample['speaker_id'] = speaker_id
+                        batch_buffer.append(sample)
+                    
+                    embedding_buffer = []
+                elif not speaker_identifier:
+                    # No speaker identification - assign unique ID
+                    sample['speaker_id'] = f"SPK_{current_id:05d}"
+                    batch_buffer.append(sample)
+                
                 sample_count += 1
                 total_samples += 1
                 
@@ -388,12 +480,25 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 logger.exception(e)
             # Continue with next dataset instead of failing completely
     
+    # Process remaining embeddings
+    if speaker_identifier and embedding_buffer:
+        logger.info(f"Processing final speaker identification batch of {len(embedding_buffer)} samples")
+        speaker_ids = speaker_identifier.process_batch(embedding_buffer)
+        
+        for sample, speaker_id in zip(embedding_buffer, speaker_ids):
+            sample['speaker_id'] = speaker_id
+            batch_buffer.append(sample)
+    
     # Upload remaining samples
     if batch_buffer and uploader:
         success, shard_name = uploader.upload_batch(batch_buffer)
         if not success:
             logger.error(f"Failed to upload final batch {shard_name}")
             return EXIT_CODES["UPLOAD_ERROR"]
+    
+    # Clean up speaker identifier
+    if speaker_identifier:
+        speaker_identifier.close()
     
     # Upload dataset card
     if uploader:
@@ -504,6 +609,43 @@ def main() -> int:
             logger.warning(f"Could not determine last ID from existing dataset, starting from S1")
 
     combined_samples = combine_datasets(processed_datasets, start_id)
+    
+    # Apply speaker identification if enabled (non-streaming mode)
+    if args.enable_speaker_id:
+        from processors.speaker_identification import SpeakerIdentification
+        
+        logger.info("Applying speaker identification to combined dataset")
+        
+        speaker_config = {
+            'model': args.speaker_model,
+            'batch_size': args.speaker_batch_size,
+            'min_cluster_size': args.speaker_min_cluster_size,
+            'min_samples': args.speaker_min_samples,
+            'epsilon': args.speaker_epsilon,
+            'threshold': args.speaker_threshold,
+            'store_embeddings': args.store_embeddings,
+            'embedding_path': os.path.join(args.output or '.', 'speaker_embeddings.h5'),
+            'model_path': os.path.join(CHECKPOINT_DIR, 'speaker_model.json')
+        }
+        
+        speaker_identifier = SpeakerIdentification(speaker_config)
+        
+        # Process in batches
+        for i in range(0, len(combined_samples), args.speaker_batch_size):
+            batch = combined_samples[i:i + args.speaker_batch_size]
+            logger.info(f"Processing speaker identification batch {i//args.speaker_batch_size + 1}")
+            
+            speaker_ids = speaker_identifier.process_batch(batch)
+            
+            # Assign speaker IDs
+            for sample, speaker_id in zip(batch, speaker_ids):
+                sample['speaker_id'] = speaker_id
+        
+        speaker_identifier.close()
+    else:
+        # Assign unique speaker IDs if not using identification
+        for sample in combined_samples:
+            sample['speaker_id'] = f"SPK_{int(sample['ID'][1:]):05d}"
 
     # Save locally if output directory specified
     if args.output:
