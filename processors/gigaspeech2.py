@@ -4,9 +4,11 @@ Processor for the GigaSpeech2 dataset.
 
 import os
 import logging
-from typing import Optional, Dict, Any, List, Iterator
+from typing import Optional, Dict, Any, List, Iterator, Tuple
 import json
 import time
+import csv
+from pathlib import Path
 
 from processors.base_processor import BaseProcessor, NetworkError, ValidationError
 from utils.audio import get_audio_length, is_valid_audio
@@ -18,9 +20,10 @@ from config import ErrorCategory
 logger = logging.getLogger(__name__)
 
 try:
-    from datasets import load_dataset
+    from datasets import load_dataset, load_dataset_builder
+    from huggingface_hub import hf_hub_download
 except ImportError:
-    logger.error("Required datasets library not installed. Please install datasets.")
+    logger.error("Required datasets/huggingface_hub library not installed. Please install datasets and huggingface_hub.")
     raise
 
 class GigaSpeech2Processor(BaseProcessor):
@@ -47,6 +50,11 @@ class GigaSpeech2Processor(BaseProcessor):
         # Initialize cache manager
         cache_dir = os.path.join(config.get("cache_dir", "./cache"), "GigaSpeech2")
         self.cache_manager = CacheManager(cache_dir, self.max_cache_gb)
+        
+        # Transcript mappings cache
+        self.transcript_mappings = {}  # {split: {segment_id: transcript}}
+        self.transcript_cache_dir = os.path.join(cache_dir, "transcripts")
+        os.makedirs(self.transcript_cache_dir, exist_ok=True)
 
     def process(self, checkpoint: Optional[str] = None, sample_mode: bool = False, sample_size: int = 5, sample_archives: int = 1) -> Iterator[Dict[str, Any]]:
         """
@@ -110,6 +118,155 @@ class GigaSpeech2Processor(BaseProcessor):
         except Exception as e:
             self.logger.error(f"Error processing GigaSpeech2 dataset: {str(e)}")
             raise NetworkError(f"Failed to load GigaSpeech2 dataset: {str(e)}")
+    
+    def _load_transcript_mapping(self, split: str) -> Dict[str, str]:
+        """
+        Load transcript mapping from TSV file for a specific split.
+        
+        Args:
+            split: Split name (train, dev, test)
+            
+        Returns:
+            dict: Mapping of segment_id to transcript
+        """
+        # Check if we already have this mapping cached
+        if split in self.transcript_mappings:
+            return self.transcript_mappings[split]
+        
+        # Check local cache first
+        cache_file = os.path.join(self.transcript_cache_dir, f"{split}_transcripts.json")
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    mapping = json.load(f)
+                self.transcript_mappings[split] = mapping
+                self.logger.info(f"Loaded {len(mapping)} transcripts from cache for split '{split}'")
+                return mapping
+            except Exception as e:
+                self.logger.warning(f"Failed to load transcript cache: {e}")
+        
+        # Determine the TSV filename based on split
+        if split == "train":
+            # For train split, we have train_raw and train_refined
+            # Default to train_refined for better quality
+            tsv_filename = f"{self.language_filter}/train_refined.tsv"
+            # Also try train_raw as fallback
+            fallback_tsv = f"{self.language_filter}/train_raw.tsv"
+        else:
+            tsv_filename = f"{self.language_filter}/{split}.tsv"
+            fallback_tsv = None
+        
+        mapping = {}
+        
+        try:
+            # Download TSV file from HuggingFace
+            self.logger.info(f"Downloading transcript file: {tsv_filename}")
+            tsv_path = hf_hub_download(
+                repo_id=self.source,
+                filename=f"data/{tsv_filename}",
+                repo_type="dataset",
+                cache_dir=self.transcript_cache_dir
+            )
+            
+            # Parse TSV file
+            self.logger.info(f"Parsing transcript file: {tsv_path}")
+            with open(tsv_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f, delimiter='\t')
+                for row in reader:
+                    if len(row) >= 2:
+                        segment_id = row[0].strip()
+                        transcript = row[1].strip()
+                        mapping[segment_id] = transcript
+            
+            self.logger.info(f"Loaded {len(mapping)} transcripts for split '{split}'")
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to load {tsv_filename}: {e}")
+            
+            # Try fallback if available
+            if fallback_tsv:
+                try:
+                    self.logger.info(f"Trying fallback transcript file: {fallback_tsv}")
+                    tsv_path = hf_hub_download(
+                        repo_id=self.source,
+                        filename=f"data/{fallback_tsv}",
+                        repo_type="dataset",
+                        cache_dir=self.transcript_cache_dir
+                    )
+                    
+                    with open(tsv_path, 'r', encoding='utf-8') as f:
+                        reader = csv.reader(f, delimiter='\t')
+                        for row in reader:
+                            if len(row) >= 2:
+                                segment_id = row[0].strip()
+                                transcript = row[1].strip()
+                                mapping[segment_id] = transcript
+                    
+                    self.logger.info(f"Loaded {len(mapping)} transcripts from fallback")
+                    
+                except Exception as e2:
+                    self.logger.error(f"Failed to load fallback TSV: {e2}")
+        
+        # Cache the mapping if we got any transcripts
+        if mapping:
+            try:
+                with open(cache_file, 'w', encoding='utf-8') as f:
+                    json.dump(mapping, f, ensure_ascii=False, indent=2)
+                self.logger.info(f"Cached {len(mapping)} transcripts for split '{split}'")
+            except Exception as e:
+                self.logger.warning(f"Failed to cache transcripts: {e}")
+        
+        self.transcript_mappings[split] = mapping
+        return mapping
+    
+    def _extract_segment_id(self, sample: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract segment ID from a sample.
+        
+        Args:
+            sample: Dataset sample
+            
+        Returns:
+            str: Segment ID if found, None otherwise
+        """
+        # First try the __key__ field which contains the actual segment ID
+        key = sample.get('__key__', '')
+        if key:
+            # __key__ format is like "0/685/0-685-9"
+            # The segment ID in TSV is the last part: "0-685-9"
+            parts = key.split('/')
+            if parts:
+                # Return the last part which should match TSV segment IDs
+                return parts[-1]
+        
+        # Try different fields where segment ID might be stored
+        segment_id = sample.get('id')
+        if segment_id:
+            return segment_id
+        
+        # Try to extract from audio path or URL
+        audio_info = sample.get('audio', {})
+        if isinstance(audio_info, dict):
+            # Check if there's a path field
+            path = audio_info.get('path', '')
+            if path:
+                # Extract filename without extension as segment ID
+                filename = os.path.basename(path)
+                segment_id = os.path.splitext(filename)[0]
+                if segment_id:
+                    return segment_id
+        
+        # Check URL field (common in webdataset format)
+        url = sample.get('__url__', '')
+        if url:
+            # Extract filename from URL
+            filename = os.path.basename(url)
+            # Remove .tar.gz or other extensions
+            segment_id = filename.split('.')[0]
+            if segment_id:
+                return segment_id
+        
+        return None
 
     def _convert_sample(self, sample: Dict[str, Any], index: int) -> Dict[str, Any]:
         """
@@ -206,8 +363,35 @@ class GigaSpeech2Processor(BaseProcessor):
         if length is None:
             raise ValidationError("Failed to calculate audio length")
 
-        # Get transcript
-        transcript = sample.get("text", "")
+        # Get transcript - first try from TSV mapping
+        transcript = ""
+        confidence_score = 1.0
+        
+        # Try to get transcript from TSV file first
+        segment_id = self._extract_segment_id(sample)
+        if segment_id:
+            # Determine split (default to train if not specified)
+            split = sample.get('split', 'train')
+            
+            # Load transcript mapping for this split if not already loaded
+            transcript_mapping = self._load_transcript_mapping(split)
+            
+            # Look up transcript
+            if segment_id in transcript_mapping:
+                transcript = transcript_mapping[segment_id]
+                self.logger.debug(f"Found transcript for segment {segment_id} from TSV")
+            else:
+                self.logger.debug(f"No transcript found for segment {segment_id} in TSV")
+        
+        # Fallback to transcript from sample if not found in TSV
+        if not transcript:
+            transcript = sample.get("text", sample.get("transcript", ""))
+            if transcript:
+                self.logger.debug("Using transcript from sample data")
+            else:
+                # If still no transcript and STT is enabled, it will be handled by the base processor
+                self.logger.debug("No transcript available from TSV or sample")
+                confidence_score = 0.0  # Will be updated by STT if enabled
 
         # Create standard sample
         return {
@@ -217,7 +401,7 @@ class GigaSpeech2Processor(BaseProcessor):
             "transcript": transcript,
             "length": length,
             "dataset_name": "GigaSpeech2",
-            "confidence_score": 1.0  # Original transcripts have perfect confidence
+            "confidence_score": confidence_score
         }
 
     def _save_processing_checkpoint(self, processed_count: int, current_index: int, processed_ids: set) -> None:
@@ -428,7 +612,21 @@ class GigaSpeech2Processor(BaseProcessor):
                 try:
                     # Extract audio and process
                     audio_data = sample.get('wav', sample.get('audio', {}))
-                    transcript = sample.get('text', sample.get('transcript', ''))
+                    
+                    # Get transcript from TSV mapping
+                    transcript = ""
+                    segment_id = self._extract_segment_id(sample)
+                    if segment_id:
+                        # Load transcript mapping for this split
+                        transcript_mapping = self._load_transcript_mapping(split)
+                        if segment_id in transcript_mapping:
+                            transcript = transcript_mapping[segment_id]
+                            if samples_processed < 5:  # Log first few successes
+                                self.logger.info(f"Found transcript for segment {segment_id} from TSV in split '{split}'")
+                    
+                    # Fallback to transcript from sample
+                    if not transcript:
+                        transcript = sample.get('text', sample.get('transcript', ''))
                     
                     if not audio_data:
                         continue
@@ -466,6 +664,27 @@ class GigaSpeech2Processor(BaseProcessor):
         except Exception as e:
             self.logger.error(f"Error processing split '{split}': {str(e)}")
             raise
+    
+    def process_all_splits(self, checkpoint: Optional[str] = None, sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
+        """
+        Process all available splits of the GigaSpeech2 dataset.
+        
+        Args:
+            checkpoint: Path to checkpoint file (optional)
+            sample_mode: If True, only process a small sample
+            sample_size: Number of samples to process in sample mode
+            
+        Yields:
+            dict: Processed sample in standard schema
+        """
+        # Get available splits
+        available_splits = self.get_available_splits()
+        
+        self.logger.info(f"Processing all available splits: {available_splits}")
+        
+        # Process each split
+        for split in available_splits:
+            yield from self._process_single_split(split, checkpoint, sample_mode, sample_size)
     
     def process_streaming(self, checkpoint: Optional[str] = None, sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
         """
@@ -565,14 +784,30 @@ class GigaSpeech2Processor(BaseProcessor):
                     # GigaSpeech2 uses 'wav' key for audio data
                     audio_data = sample.get('wav', sample.get('audio', {}))
                     
-                    # GigaSpeech2 transcripts are in separate TSV files, not in the webdataset
-                    # For now, we'll use empty transcript for streaming mode
-                    # TODO: Load transcripts from TSV files if needed
-                    transcript = sample.get('text', sample.get('transcript', ''))
+                    # Get transcript from TSV mapping
+                    transcript = ""
+                    segment_id = self._extract_segment_id(sample)
+                    
+                    # Debug logging for first few samples
+                    if samples_processed < 5:
+                        self.logger.info(f"Sample {samples_processed + 1} - Extracted segment_id: {segment_id}, __key__: {sample.get('__key__')}, keys: {list(sample.keys())}")
+                    
+                    if segment_id:
+                        # Load transcript mapping for train split
+                        transcript_mapping = self._load_transcript_mapping('train')
+                        if segment_id in transcript_mapping:
+                            transcript = transcript_mapping[segment_id]
+                            if samples_processed < 5:  # Log first few successes
+                                self.logger.info(f"Found transcript for segment {segment_id} from TSV")
+                        else:
+                            if samples_processed < 5:
+                                # Show a few keys from the mapping to understand the format
+                                sample_keys = list(transcript_mapping.keys())[:5]
+                                self.logger.info(f"Segment ID '{segment_id}' not found in TSV. Sample TSV keys: {sample_keys}")
+                    
+                    # Fallback to transcript from sample
                     if not transcript:
-                        # Log once that transcripts are not available in streaming mode
-                        if samples_processed == 0:
-                            self.logger.info("Note: GigaSpeech2 transcripts are in separate TSV files, not available in streaming mode")
+                        transcript = sample.get('text', sample.get('transcript', ''))
                     
                     # Skip if no audio
                     if not audio_data:
