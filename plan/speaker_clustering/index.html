@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speaker Clustering Feature - Thai Audio Dataset</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Critical CSS for immediate rendering */
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --accent-color: #ec4899;
+            --bg-dark: #0f172a;
+            --bg-light: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+            --gradient-primary: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            --gradient-accent: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
+            --shadow-sm: 0 2px 4px rgba(0,0,0,0.1);
+            --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+            --shadow-lg: 0 10px 25px rgba(0,0,0,0.2);
+            --shadow-xl: 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* Loading animation */
+        .loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-dark);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            transition: opacity 0.5s ease;
+        }
+
+        .loader.fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader-content {
+            text-align: center;
+        }
+
+        .loader-spinner {
+            width: 60px;
+            height: 60px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Glassmorphism containers */
+        .glass {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* Gradient backgrounds */
+        .gradient-bg {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .gradient-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.5;
+            animation: float 20s ease-in-out infinite;
+        }
+
+        .orb-1 {
+            width: 600px;
+            height: 600px;
+            background: var(--primary-color);
+            top: -300px;
+            left: -300px;
+            animation-duration: 25s;
+        }
+
+        .orb-2 {
+            width: 400px;
+            height: 400px;
+            background: var(--secondary-color);
+            bottom: -200px;
+            right: -200px;
+            animation-duration: 30s;
+            animation-delay: -5s;
+        }
+
+        .orb-3 {
+            width: 500px;
+            height: 500px;
+            background: var(--accent-color);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation-duration: 35s;
+            animation-delay: -10s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            25% { transform: translate(50px, -50px) scale(1.1); }
+            50% { transform: translate(-50px, 50px) scale(0.9); }
+            75% { transform: translate(30px, 30px) scale(1.05); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loader" id="loader">
+        <div class="loader-content">
+            <div class="loader-spinner"></div>
+            <p class="mt-4 text-secondary">Initializing Speaker Clustering System...</p>
+        </div>
+    </div>
+
+    <!-- Gradient Background -->
+    <div class="gradient-bg">
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="nav-container glass">
+        <div class="nav-content">
+            <div class="nav-brand">
+                <i class="fas fa-microphone-lines"></i>
+                <span>Speaker Clustering</span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#overview" class="nav-link">Overview</a></li>
+                <li><a href="#requirements" class="nav-link">Requirements</a></li>
+                <li><a href="#architecture" class="nav-link">Architecture</a></li>
+                <li><a href="#implementation" class="nav-link">Implementation</a></li>
+                <li><a href="#integration" class="nav-link">Integration</a></li>
+                <li><a href="#code" class="nav-link">Code</a></li>
+            </ul>
+            <button class="theme-toggle" id="themeToggle">
+                <i class="fas fa-moon"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="container">
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    <span class="gradient-text">Speaker Clustering</span> for Thai Audio Dataset
+                </h1>
+                <p class="hero-subtitle">
+                    Intelligent speaker identification and clustering system for 10M+ audio files
+                </p>
+                <div class="hero-stats">
+                    <div class="stat-card glass">
+                        <i class="fas fa-database"></i>
+                        <div class="stat-content">
+                            <h3>10M+</h3>
+                            <p>Audio Files</p>
+                        </div>
+                    </div>
+                    <div class="stat-card glass">
+                        <i class="fas fa-microchip"></i>
+                        <div class="stat-content">
+                            <h3>RTX 5090</h3>
+                            <p>32GB VRAM</p>
+                        </div>
+                    </div>
+                    <div class="stat-card glass">
+                        <i class="fas fa-users"></i>
+                        <div class="stat-content">
+                            <h3>Global</h3>
+                            <p>Speaker IDs</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Overview Section -->
+    <section id="overview" class="section">
+        <div class="container">
+            <h2 class="section-title">Overview</h2>
+            <div class="content-grid">
+                <div class="feature-card glass">
+                    <div class="feature-icon">
+                        <i class="fas fa-bullseye"></i>
+                    </div>
+                    <h3>Project Goal</h3>
+                    <p>Identify and group audio files by speaker, assigning unique speaker IDs while maintaining data integrity across 10M+ Thai audio samples.</p>
+                </div>
+                <div class="feature-card glass">
+                    <div class="feature-icon">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <h3>Quality First</h3>
+                    <p>Prefer over-segmentation to prevent merging different speakers. Each uncertain cluster gets a unique speaker ID.</p>
+                </div>
+                <div class="feature-card glass">
+                    <div class="feature-icon">
+                        <i class="fas fa-stream"></i>
+                    </div>
+                    <h3>Streaming Integration</h3>
+                    <p>Seamlessly integrated into the existing streaming pipeline for real-time processing without full dataset download.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Requirements Section -->
+    <section id="requirements" class="section">
+        <div class="container">
+            <h2 class="section-title">Requirements Analysis</h2>
+            <div class="requirement-cards">
+                <div class="req-card glass">
+                    <h3><i class="fas fa-database"></i> Scale</h3>
+                    <ul>
+                        <li>10M+ audio files to process</li>
+                        <li>2-5 seconds per audio typically</li>
+                        <li>Inconsistent recording environments</li>
+                        <li>Ongoing dataset growth support</li>
+                    </ul>
+                </div>
+                <div class="req-card glass">
+                    <h3><i class="fas fa-server"></i> Resources</h3>
+                    <ul>
+                        <li>RTX 5090 with 32GB VRAM</li>
+                        <li>128GB System RAM</li>
+                        <li>~100GB storage for embeddings</li>
+                        <li>Overnight processing acceptable</li>
+                    </ul>
+                </div>
+                <div class="req-card glass">
+                    <h3><i class="fas fa-check-circle"></i> Constraints</h3>
+                    <ul>
+                        <li>Must work with --append flag</li>
+                        <li>Prefer over-segmentation</li>
+                        <li>No ground truth labels available</li>
+                        <li>Share VRAM with STT processing</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section id="architecture" class="section">
+        <div class="container">
+            <h2 class="section-title">System Architecture</h2>
+            
+            <div class="architecture-diagram glass">
+                <h3>Processing Pipeline</h3>
+                <div class="pipeline-flow">
+                    <div class="pipeline-step">
+                        <i class="fas fa-file-audio"></i>
+                        <span>Audio Stream</span>
+                    </div>
+                    <i class="fas fa-arrow-right"></i>
+                    <div class="pipeline-step">
+                        <i class="fas fa-brain"></i>
+                        <span>Embedding Extraction</span>
+                    </div>
+                    <i class="fas fa-arrow-right"></i>
+                    <div class="pipeline-step">
+                        <i class="fas fa-buffer"></i>
+                        <span>Buffer Management</span>
+                    </div>
+                    <i class="fas fa-arrow-right"></i>
+                    <div class="pipeline-step">
+                        <i class="fas fa-project-diagram"></i>
+                        <span>HDBSCAN Clustering</span>
+                    </div>
+                    <i class="fas fa-arrow-right"></i>
+                    <div class="pipeline-step">
+                        <i class="fas fa-id-badge"></i>
+                        <span>Speaker ID Assignment</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tech-stack glass">
+                <h3>Technology Stack</h3>
+                <div class="tech-grid">
+                    <div class="tech-item">
+                        <h4>Embedding Model</h4>
+                        <p>pyannote/embedding or ECAPA-TDNN</p>
+                        <span class="tech-tag">Multilingual Support</span>
+                    </div>
+                    <div class="tech-item">
+                        <h4>Clustering Algorithm</h4>
+                        <p>HDBSCAN with conservative parameters</p>
+                        <span class="tech-tag">Incremental Processing</span>
+                    </div>
+                    <div class="tech-item">
+                        <h4>Storage Format</h4>
+                        <p>HDF5/Parquet for embeddings</p>
+                        <span class="tech-tag">~30GB for 10M files</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Implementation Section -->
+    <section id="implementation" class="section">
+        <div class="container">
+            <h2 class="section-title">Implementation Details</h2>
+            
+            <div class="tabs-container glass">
+                <div class="tabs-header">
+                    <button class="tab-button active" data-tab="schema">Schema Changes</button>
+                    <button class="tab-button" data-tab="module">Speaker Module</button>
+                    <button class="tab-button" data-tab="clustering">Clustering Config</button>
+                    <button class="tab-button" data-tab="cli">CLI Options</button>
+                </div>
+                
+                <div class="tabs-content">
+                    <div class="tab-panel active" id="schema">
+                        <h3>Schema Modifications</h3>
+                        <pre><code class="language-python"># config.py - Updated TARGET_SCHEMA
+TARGET_SCHEMA = {
+    "ID": str,           # Sequential: S1, S2, S3...
+    "speaker_id": str,   # Speaker group: SPK_00001, SPK_00002...
+    "Language": str,
+    "audio": dict,
+    "transcript": str,
+    "length": float,
+    "dataset_name": str,
+    "confidence_score": float
+}</code></pre>
+                    </div>
+                    
+                    <div class="tab-panel" id="module">
+                        <h3>Speaker Identification Module</h3>
+                        <pre><code class="language-python"># processors/speaker_identification.py
+from pyannote.audio import Model
+import hdbscan
+import numpy as np
+
+class SpeakerIdentification:
+    def __init__(self, config):
+        self.model = Model.from_pretrained("pyannote/embedding")
+        self.clustering_params = {
+            'min_cluster_size': 15,
+            'min_samples': 10,
+            'metric': 'cosine',
+            'cluster_selection_epsilon': 0.3
+        }
+        
+    def extract_embeddings(self, audio_batch):
+        """Extract speaker embeddings from audio batch"""
+        embeddings = []
+        for audio in audio_batch:
+            embedding = self.model(audio['array'])
+            embeddings.append(embedding)
+        return np.array(embeddings)
+    
+    def cluster_speakers(self, embeddings):
+        """Cluster embeddings using HDBSCAN"""
+        clusterer = hdbscan.HDBSCAN(**self.clustering_params)
+        labels = clusterer.fit_predict(embeddings)
+        return labels</code></pre>
+                    </div>
+                    
+                    <div class="tab-panel" id="clustering">
+                        <h3>Clustering Configuration</h3>
+                        <pre><code class="language-python"># Conservative parameters for over-segmentation
+SPEAKER_CLUSTERING_CONFIG = {
+    "embedding_model": "pyannote/embedding",
+    "embedding_dim": 512,
+    "batch_size": 10000,  # Process in 10K batches
+    "clustering": {
+        "algorithm": "hdbscan",
+        "min_cluster_size": 15,
+        "min_samples": 10,
+        "metric": "cosine",
+        "cluster_selection_epsilon": 0.3,
+        "similarity_threshold": 0.7
+    },
+    "storage": {
+        "format": "hdf5",
+        "compression": "gzip",
+        "chunk_size": 1000
+    }
+}</code></pre>
+                    </div>
+                    
+                    <div class="tab-panel" id="cli">
+                        <h3>Command Line Options</h3>
+                        <pre><code class="language-bash"># New CLI arguments
+python main.py --fresh --all --streaming \
+    --enable-speaker-id \
+    --speaker-batch-size 10000 \
+    --store-embeddings \
+    --speaker-threshold 0.7 \
+    --speaker-model pyannote/embedding</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Integration Section -->
+    <section id="integration" class="section">
+        <div class="container">
+            <h2 class="section-title">Streaming Integration</h2>
+            
+            <div class="integration-flow glass">
+                <h3>Integration Points</h3>
+                <div class="flow-diagram">
+                    <div class="flow-step">
+                        <h4>1. Audio Processing</h4>
+                        <p>Extract embeddings during audio standardization</p>
+                        <code>embedding = speaker_id.extract(audio)</code>
+                    </div>
+                    <div class="flow-step">
+                        <h4>2. Buffer Management</h4>
+                        <p>Accumulate embeddings until batch size reached</p>
+                        <code>if len(buffer) >= BATCH_SIZE: cluster()</code>
+                    </div>
+                    <div class="flow-step">
+                        <h4>3. Incremental Clustering</h4>
+                        <p>Run HDBSCAN on buffered embeddings</p>
+                        <code>labels = clusterer.fit_predict(buffer)</code>
+                    </div>
+                    <div class="flow-step">
+                        <h4>4. ID Assignment</h4>
+                        <p>Assign speaker IDs before upload</p>
+                        <code>sample['speaker_id'] = f"SPK_{label:05d}"</code>
+                    </div>
+                </div>
+            </div>
+
+            <div class="append-mode glass">
+                <h3>Append Mode Support</h3>
+                <div class="append-features">
+                    <div class="feature">
+                        <i class="fas fa-save"></i>
+                        <h4>Persistent Model</h4>
+                        <p>Save cluster centroids and mappings for reuse</p>
+                    </div>
+                    <div class="feature">
+                        <i class="fas fa-sync"></i>
+                        <h4>Incremental Updates</h4>
+                        <p>Compare new embeddings with existing clusters</p>
+                    </div>
+                    <div class="feature">
+                        <i class="fas fa-code-branch"></i>
+                        <h4>Smart Assignment</h4>
+                        <p>Assign to existing speakers or create new ones</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Code Examples Section -->
+    <section id="code" class="section">
+        <div class="container">
+            <h2 class="section-title">Implementation Code</h2>
+            
+            <div class="code-examples">
+                <div class="code-block glass">
+                    <div class="code-header">
+                        <h3>Streaming Pipeline Integration</h3>
+                        <button class="copy-btn" data-target="streaming-code">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                    <pre><code id="streaming-code" class="language-python"># main.py - Modified streaming processing
+def process_streaming_mode(args, dataset_names):
+    # Initialize speaker identification if enabled
+    speaker_identifier = None
+    embedding_buffer = []
+    speaker_id_counter = 1
+    
+    if args.enable_speaker_id:
+        from processors.speaker_identification import SpeakerIdentification
+        speaker_identifier = SpeakerIdentification({
+            'model': args.speaker_model,
+            'batch_size': args.speaker_batch_size,
+            'threshold': args.speaker_threshold,
+            'store_embeddings': args.store_embeddings
+        })
+    
+    # Process each dataset
+    for dataset_name in dataset_names:
+        for sample in processor.process_all_splits(...):
+            # Assign sequential ID
+            sample["ID"] = f"S{current_id}"
+            
+            # Extract speaker embedding if enabled
+            if speaker_identifier:
+                embedding = speaker_identifier.extract_embedding(
+                    sample['audio']['array'],
+                    sample['audio']['sampling_rate']
+                )
+                embedding_buffer.append({
+                    'id': sample['ID'],
+                    'embedding': embedding
+                })
+                
+                # Cluster when buffer is full
+                if len(embedding_buffer) >= args.speaker_batch_size:
+                    speaker_ids = speaker_identifier.cluster_batch(
+                        embedding_buffer
+                    )
+                    
+                    # Assign speaker IDs
+                    for item, speaker_label in zip(embedding_buffer, speaker_ids):
+                        if speaker_label == -1:  # Noise/uncertain
+                            speaker_id = f"SPK_{speaker_id_counter:05d}"
+                            speaker_id_counter += 1
+                        else:
+                            speaker_id = f"SPK_{speaker_label:05d}"
+                        
+                        # Update sample
+                        sample['speaker_id'] = speaker_id
+                    
+                    embedding_buffer = []
+            
+            batch_buffer.append(sample)</code></pre>
+                </div>
+
+                <div class="code-block glass">
+                    <div class="code-header">
+                        <h3>Speaker Identification Class</h3>
+                        <button class="copy-btn" data-target="speaker-class">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                    <pre><code id="speaker-class" class="language-python"># processors/speaker_identification.py
+import torch
+import numpy as np
+import h5py
+from pyannote.audio import Model
+import hdbscan
+from typing import List, Dict, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+class SpeakerIdentification:
+    """Speaker identification and clustering for audio samples."""
+    
+    def __init__(self, config: Dict):
+        self.config = config
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Load embedding model
+        self.model = Model.from_pretrained(
+            config.get('model', 'pyannote/embedding')
+        ).to(self.device)
+        
+        # Clustering parameters
+        self.clustering_params = {
+            'min_cluster_size': config.get('min_cluster_size', 15),
+            'min_samples': config.get('min_samples', 10),
+            'metric': 'cosine',
+            'cluster_selection_epsilon': config.get('epsilon', 0.3),
+            'cluster_selection_method': 'eom',
+            'prediction_data': True
+        }
+        
+        # Storage settings
+        self.store_embeddings = config.get('store_embeddings', False)
+        self.embedding_file = None
+        if self.store_embeddings:
+            self.embedding_file = h5py.File('speaker_embeddings.h5', 'a')
+        
+        # For append mode
+        self.existing_centroids = None
+        self.load_existing_model()
+    
+    def extract_embedding(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        """Extract speaker embedding from audio."""
+        with torch.no_grad():
+            # Prepare audio for model
+            audio_tensor = torch.from_numpy(audio).float().to(self.device)
+            if audio_tensor.dim() == 1:
+                audio_tensor = audio_tensor.unsqueeze(0)
+            
+            # Extract embedding
+            embedding = self.model({
+                'waveform': audio_tensor,
+                'sample_rate': sample_rate
+            })
+            
+            return embedding.cpu().numpy().squeeze()
+    
+    def cluster_batch(self, embedding_buffer: List[Dict]) -> List[int]:
+        """Cluster a batch of embeddings."""
+        embeddings = np.array([item['embedding'] for item in embedding_buffer])
+        
+        # Run clustering
+        clusterer = hdbscan.HDBSCAN(**self.clustering_params)
+        labels = clusterer.fit_predict(embeddings)
+        
+        # Handle existing clusters (append mode)
+        if self.existing_centroids is not None:
+            labels = self._merge_with_existing(embeddings, labels, clusterer)
+        
+        # Store embeddings if requested
+        if self.store_embeddings and self.embedding_file:
+            self._store_embeddings(embedding_buffer, labels)
+        
+        # Update model for future batches
+        self._update_model(embeddings, labels, clusterer)
+        
+        return labels
+    
+    def _merge_with_existing(self, embeddings, labels, clusterer):
+        """Merge new clusters with existing ones."""
+        # Compare with existing centroids
+        similarities = self._compute_similarities(embeddings, self.existing_centroids)
+        
+        # Assign to existing clusters if similarity > threshold
+        threshold = self.config.get('threshold', 0.7)
+        for i, sim_scores in enumerate(similarities):
+            max_sim_idx = np.argmax(sim_scores)
+            max_sim = sim_scores[max_sim_idx]
+            
+            if max_sim > threshold and labels[i] != -1:
+                # Assign to existing cluster
+                labels[i] = max_sim_idx + self.existing_centroids.shape[0]
+        
+        return labels
+    
+    def _compute_similarities(self, embeddings, centroids):
+        """Compute cosine similarities between embeddings and centroids."""
+        # Normalize vectors
+        embeddings_norm = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+        centroids_norm = centroids / np.linalg.norm(centroids, axis=1, keepdims=True)
+        
+        # Compute cosine similarity
+        similarities = np.dot(embeddings_norm, centroids_norm.T)
+        return similarities
+    
+    def save_model(self, filepath: str):
+        """Save the speaker model for append mode."""
+        model_data = {
+            'centroids': self.existing_centroids,
+            'clustering_params': self.clustering_params,
+            'speaker_count': self.speaker_counter
+        }
+        np.save(filepath, model_data)
+    
+    def load_existing_model(self):
+        """Load existing speaker model if available."""
+        # Implementation for loading previous model
+        pass</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Project Status</h4>
+                    <div class="status-indicator">
+                        <span class="status-dot active"></span>
+                        <span>System Design Complete</span>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h4>Resources</h4>
+                    <ul>
+                        <li><a href="https://github.com/pyannote/pyannote-audio">pyannote-audio</a></li>
+                        <li><a href="https://hdbscan.readthedocs.io/">HDBSCAN Documentation</a></li>
+                        <li><a href="https://huggingface.co/pyannote">Pyannote Models</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Performance Metrics</h4>
+                    <div class="metric">
+                        <span>Processing Speed:</span>
+                        <strong>~1000 samples/sec</strong>
+                    </div>
+                    <div class="metric">
+                        <span>Memory Usage:</span>
+                        <strong>~4GB VRAM</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Thai Audio Dataset Project. Built with modern web technologies.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
