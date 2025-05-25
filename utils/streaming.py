@@ -212,6 +212,7 @@ for sample in dataset['train']:
 ## Schema
 
 - `ID`: Unique identifier (S1, S2, S3, ...)
+- `speaker_id`: Speaker identifier (SPK_00001, SPK_00002, ...)
 - `Language`: Language code (always "th" for Thai)
 - `audio`: Audio data with 16kHz sampling rate
 - `transcript`: Text transcript of the audio
