@@ -6,9 +6,11 @@ A modular system to gather Thai audio data from multiple sources and combine the
 
 - **ID**: Sequential identifiers (S1, S2, S3, ...) globally unique across all datasets
 - **Language**: "th" for Thai
-- **audio**: Audio file data
+- **audio**: Audio data in HuggingFace format (dict with array, sampling_rate, and path)
 - **transcript**: Transcript of the audio if available
 - **length**: Duration of the audio in seconds
+- **dataset_name**: Name of the source dataset (e.g., "GigaSpeech2", "ProcessedVoiceTH")
+- **confidence_score**: Confidence score of the transcript (1.0 for original transcripts)
 
 ## Data Sources
 
@@ -125,6 +127,11 @@ python main.py --fresh --all --sample --sample-size 10
 - `--target-db F`: Target volume level in dB (default: -20.0)
 - `--no-volume-norm`: Disable volume normalization
 
+**Speech-to-Text Options:**
+- `--no-stt`: Disable Speech-to-Text processing
+- `--enable-stt`: Enable Speech-to-Text processing for missing transcripts
+- `--stt-batch-size N`: Batch size for STT processing (default: 16)
+
 **Other Options:**
 - `--output DIR`: Output directory for local dataset
 - `--verbose`: Enable verbose logging
@@ -180,7 +187,11 @@ ThaiDatasetGathering/
 │   ├── test_audio.py        # Tests for audio utilities
 │   ├── test_base_processor.py # Tests for base processor
 │   ├── test_mozilla_cv.py   # Tests for Mozilla Common Voice processor
-│   └── test_sample_mode.py  # Tests for sample mode feature
+│   ├── test_sample_mode.py  # Tests for sample mode feature
+│   ├── test_streaming.py    # Tests for streaming mode
+│   ├── test_streaming_integration.py # Integration tests for streaming
+│   ├── test_checkpoint_system.py # Tests for unified checkpoint system
+│   └── test_complete_workflow.py # End-to-end workflow tests
 ├── docs/
 │   └── architecture.md      # Architecture documentation
 ├── data/                    # Data directory (created at runtime)
