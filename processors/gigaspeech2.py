@@ -394,7 +394,7 @@ class GigaSpeech2Processor(BaseProcessor):
                 confidence_score = 0.0  # Will be updated by STT if enabled
 
         # Create standard sample
-        return {
+        sample = {
             "ID": id_str,
             "Language": "th",
             "audio": audio_dict,
@@ -403,6 +403,12 @@ class GigaSpeech2Processor(BaseProcessor):
             "dataset_name": "GigaSpeech2",
             "confidence_score": confidence_score
         }
+        
+        # Apply STT if enabled and transcript is empty
+        if self.config.get("enable_stt", False) and not sample.get("transcript", "").strip():
+            sample = self.process_sample_with_stt(sample, index)
+        
+        return sample
 
     def _save_processing_checkpoint(self, processed_count: int, current_index: int, processed_ids: set) -> None:
         """
@@ -644,6 +650,10 @@ class GigaSpeech2Processor(BaseProcessor):
                         audio_hf, transcript, samples_processed
                     )
                     
+                    # Apply STT if enabled and transcript is empty
+                    if self.config.get("enable_stt", False) and not processed_sample.get("transcript", "").strip():
+                        processed_sample = self.process_sample_with_stt(processed_sample, samples_processed)
+                    
                     # Validate sample
                     errors = self.validate_sample(processed_sample)
                     if errors:
@@ -828,6 +838,10 @@ class GigaSpeech2Processor(BaseProcessor):
                     processed_sample = self._create_streaming_sample(
                         audio_hf, transcript, samples_processed
                     )
+                    
+                    # Apply STT if enabled and transcript is empty
+                    if self.config.get("enable_stt", False) and not processed_sample.get("transcript", "").strip():
+                        processed_sample = self.process_sample_with_stt(processed_sample, samples_processed)
                     
                     # Validate sample
                     errors = self.validate_sample(processed_sample)

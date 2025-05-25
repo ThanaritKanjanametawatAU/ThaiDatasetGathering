@@ -159,6 +159,10 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
                         audio_hf, transcript, samples_processed
                     )
                     
+                    # Apply STT if enabled and transcript is empty
+                    if self.config.get("enable_stt", False) and not processed_sample.get("transcript", "").strip():
+                        processed_sample = self.process_sample_with_stt(processed_sample, samples_processed)
+                    
                     # Validate sample
                     errors = self.validate_sample(processed_sample)
                     if errors:
@@ -438,7 +442,7 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
         transcript = sample.get("sentence", "")
 
         # Create standard sample
-        return {
+        sample = {
             "ID": id_str,
             "Language": "th",
             "audio": audio_dict,
@@ -447,6 +451,12 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
             "dataset_name": "MozillaCommonVoice",
             "confidence_score": 1.0  # Original transcripts have perfect confidence
         }
+        
+        # Apply STT if enabled and transcript is empty
+        if self.config.get("enable_stt", False) and not sample.get("transcript", "").strip():
+            sample = self.process_sample_with_stt(sample, index)
+        
+        return sample
 
     def _save_processing_checkpoint(self, processed_count: int, current_index: int, processed_ids: set) -> None:
         """
@@ -573,6 +583,10 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
                     processed_sample = self._create_streaming_sample(
                         audio_hf, transcript, samples_processed
                     )
+                    
+                    # Apply STT if enabled and transcript is empty
+                    if self.config.get("enable_stt", False) and not processed_sample.get("transcript", "").strip():
+                        processed_sample = self.process_sample_with_stt(processed_sample, samples_processed)
                     
                     # Validate sample
                     errors = self.validate_sample(processed_sample)
