@@ -30,7 +30,10 @@ wheels/
 .installed.cfg
 *.egg
 .claude
-CLAUDE.md
+
+# Test directories
+test_checkpoints/
+test_checkpoints_backup/
 
 # Virtual environments
 venv/
