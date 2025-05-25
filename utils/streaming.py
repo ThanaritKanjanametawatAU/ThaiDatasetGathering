@@ -114,38 +114,6 @@ class StreamingUploader:
         temp_path = f"/tmp/{shard_filename}"
         
         try:
-            # Process audio data to ensure it's in the correct format
-            processed_samples = []
-            for sample in samples:
-                processed_sample = sample.copy()
-                
-                # Ensure audio is in the correct format
-                if "audio" in processed_sample and isinstance(processed_sample["audio"], dict):
-                    audio_data = processed_sample["audio"]
-                    
-                    # If audio has array, convert to bytes for storage
-                    if "array" in audio_data and audio_data["array"] is not None:
-                        import soundfile as sf
-                        import io
-                        import numpy as np
-                        
-                        # Get audio array and sampling rate
-                        audio_array = np.array(audio_data["array"], dtype=np.float32)
-                        sampling_rate = audio_data.get("sampling_rate", 16000)
-                        
-                        # Convert to WAV bytes
-                        buffer = io.BytesIO()
-                        sf.write(buffer, audio_array, sampling_rate, format='WAV', subtype='PCM_16')
-                        audio_bytes = buffer.getvalue()
-                        
-                        # Store as bytes with path for HuggingFace compatibility
-                        processed_sample["audio"] = {
-                            "bytes": audio_bytes,
-                            "path": audio_data.get("path", f"{sample.get('ID', 'unknown')}.wav")
-                        }
-                
-                processed_samples.append(processed_sample)
-            
             # Define features for the dataset
             features = Features({
                 "ID": Value("string"),
@@ -159,7 +127,8 @@ class StreamingUploader:
             })
             
             # Convert samples to Dataset with explicit features
-            dataset = Dataset.from_list(processed_samples, features=features)
+            # The Audio feature will handle the conversion automatically
+            dataset = Dataset.from_list(samples, features=features)
             
             # Save as parquet
             dataset.to_parquet(temp_path)
@@ -195,6 +164,8 @@ class StreamingUploader:
 dataset_info:
   features:
   - name: ID
+    dtype: string
+  - name: speaker_id
     dtype: string
   - name: Language
     dtype: string
