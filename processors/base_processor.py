@@ -177,7 +177,7 @@ class BaseProcessor(ABC):
         return ["train"]
     
     def process_all_splits(self, checkpoint: Optional[str] = None, sample_mode: bool = False, 
-                          sample_size: int = 5) -> Iterator[Dict[str, Any]]:
+                          sample_size: int = 5, checkpoint_interval: int = 1000) -> Iterator[Dict[str, Any]]:
         """
         Process all available splits and combine them into one stream.
         
@@ -185,12 +185,27 @@ class BaseProcessor(ABC):
             checkpoint: Path to checkpoint file (optional)
             sample_mode: If True, only process a small sample of the dataset
             sample_size: Number of samples to process in sample mode (distributed across splits)
+            checkpoint_interval: Save checkpoint every N samples (default: 1000)
             
         Yields:
             dict: Processed sample in standard schema
         """
         available_splits = self.get_available_splits()
         self.logger.info(f"Processing all splits: {available_splits}")
+        
+        # Load checkpoint data if resuming
+        checkpoint_data = None
+        skip_until_split = None
+        skip_count = 0
+        processed_ids = []
+        
+        if checkpoint:
+            checkpoint_data = self.load_unified_checkpoint(checkpoint)
+            if checkpoint_data:
+                skip_until_split = checkpoint_data.get('current_split')
+                skip_count = checkpoint_data.get('samples_processed', 0)
+                processed_ids = checkpoint_data.get('processed_ids', [])
+                self.logger.info(f"Resuming from split '{skip_until_split}', sample {skip_count}")
         
         # In sample mode, distribute sample size across splits
         if sample_mode and len(available_splits) > 1:
@@ -201,9 +216,19 @@ class BaseProcessor(ABC):
             remaining_samples = 0
             
         total_samples_yielded = 0
+        total_samples_processed = skip_count
+        should_skip = skip_until_split is not None
         
         for i, split in enumerate(available_splits):
-            self.logger.info(f"Processing split: {split}")
+            # Skip splits before the checkpoint split
+            if should_skip and split != skip_until_split:
+                self.logger.info(f"Skipping split: {split} (before checkpoint)")
+                continue
+            elif should_skip and split == skip_until_split:
+                should_skip = False
+                self.logger.info(f"Resuming at split: {split}")
+            else:
+                self.logger.info(f"Processing split: {split}")
             
             # Add extra samples to first split if needed
             split_sample_size = samples_per_split + (remaining_samples if i == 0 else 0)
@@ -214,7 +239,17 @@ class BaseProcessor(ABC):
             
             try:
                 # Process this split
-                for sample in self._process_single_split(split, checkpoint, sample_mode, split_sample_size):
+                # Calculate how many samples to skip in this split
+                split_skip_count = 0
+                if checkpoint_data and split == skip_until_split:
+                    split_skip_count = checkpoint_data.get('split_index', 0)
+                    
+                for split_sample_index, sample in enumerate(self._process_single_split(split, checkpoint if split == skip_until_split else None, 
+                                                       sample_mode, split_sample_size)):
+                    # Skip samples in the resumed split
+                    if split == skip_until_split and split_sample_index < split_skip_count:
+                        continue
+                        
                     # Add metadata about original split (for internal tracking)
                     original_split = split
                     
@@ -231,18 +266,60 @@ class BaseProcessor(ABC):
                     
                     split_samples_yielded += 1
                     total_samples_yielded += 1
+                    total_samples_processed += 1
+                    
+                    # Track processed IDs for checkpoint
+                    if 'ID' in sample:
+                        processed_ids.append(sample['ID'])
+                    
+                    # Periodic checkpoint saving
+                    if total_samples_processed > 0 and total_samples_processed % checkpoint_interval == 0:
+                        self.save_unified_checkpoint(
+                            samples_processed=total_samples_processed,
+                            current_split=split,
+                            split_index=split_samples_yielded,
+                            processed_ids=processed_ids[-checkpoint_interval:],  # Keep last N IDs
+                            dataset_specific_data={"total_samples_yielded": total_samples_yielded}
+                        )
+                        self.logger.info(f"Periodic checkpoint saved at {total_samples_processed} samples")
                     
                     # Check if we've reached sample limit
                     if sample_mode and total_samples_yielded >= sample_size:
                         self.logger.info(f"Reached sample limit of {sample_size}")
+                        # Save final checkpoint
+                        self.save_unified_checkpoint(
+                            samples_processed=total_samples_processed,
+                            current_split=split,
+                            split_index=split_samples_yielded,
+                            processed_ids=processed_ids[-checkpoint_interval:],
+                            dataset_specific_data={"total_samples_yielded": total_samples_yielded}
+                        )
                         return
                         
             except Exception as e:
                 self.logger.error(f"Error processing split {split}: {e}")
+                # Save checkpoint on error
+                self.save_unified_checkpoint(
+                    samples_processed=total_samples_processed,
+                    current_split=split,
+                    split_index=split_samples_yielded,
+                    processed_ids=processed_ids[-checkpoint_interval:],
+                    dataset_specific_data={"total_samples_yielded": total_samples_yielded, "error": str(e)}
+                )
                 if not sample_mode:
                     raise
                     
         self.logger.info(f"Processed {total_samples_yielded} samples from all splits")
+        
+        # Save final checkpoint
+        if total_samples_yielded > 0:
+            self.save_unified_checkpoint(
+                samples_processed=total_samples_processed,
+                current_split=available_splits[-1] if available_splits else None,
+                split_index=split_samples_yielded,
+                processed_ids=processed_ids[-checkpoint_interval:],
+                dataset_specific_data={"total_samples_yielded": total_samples_yielded, "completed": True}
+            )
     
     def _process_single_split(self, split: str, checkpoint: Optional[str] = None, 
                              sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
@@ -435,11 +512,15 @@ class BaseProcessor(ABC):
             timestamp = int(time.time())
             checkpoint_file = os.path.join(self.checkpoint_dir, f"{self.name}_{timestamp}.json")
 
+        # Ensure timestamp is set
+        if "timestamp" not in checkpoint_data:
+            checkpoint_data["timestamp"] = int(time.time())
+
         # Add metadata
         checkpoint_data["metadata"] = {
             "processor": self.name,
-            "timestamp": timestamp,
-            "version": "1.0"
+            "timestamp": checkpoint_data["timestamp"],
+            "version": "2.0"  # Updated version for unified format
         }
 
         # Save to file
@@ -497,7 +578,116 @@ class BaseProcessor(ABC):
         if os.path.exists(checkpoint_file):
             with open(checkpoint_file, 'r') as f:
                 data = json.load(f)
-            self.logger.info(f"Loaded streaming checkpoint: shard {data['shard_num']}, {data['samples_processed']} samples")
+            
+            # Handle both old and new checkpoint formats
+            if 'shard_num' in data:
+                self.logger.info(f"Loaded streaming checkpoint: shard {data['shard_num']}, {data['samples_processed']} samples")
+            else:
+                # Convert old format to new format
+                samples_processed = data.get('samples_processed', data.get('processed_count', 0))
+                self.logger.info(f"Loaded checkpoint: {samples_processed} samples processed")
+                # Add missing fields for compatibility
+                data['shard_num'] = 0  # Default shard number
+                data['samples_processed'] = samples_processed
+            
+            return data
+        
+        return None
+    
+    def save_unified_checkpoint(self, samples_processed: int, current_split: Optional[str] = None,
+                              split_index: Optional[int] = None, shard_num: Optional[int] = None,
+                              last_sample_id: Optional[str] = None, processed_ids: Optional[List[str]] = None,
+                              dataset_specific_data: Optional[Dict] = None) -> str:
+        """
+        Save a unified checkpoint that works for both regular and streaming modes.
+        
+        Args:
+            samples_processed: Total number of samples processed
+            current_split: Current split being processed (e.g., "train", "test")
+            split_index: Index within the current split
+            shard_num: Current shard number (for streaming mode)
+            last_sample_id: ID of the last processed sample
+            processed_ids: List of processed sample IDs (for regular mode)
+            dataset_specific_data: Any dataset-specific checkpoint data
+            
+        Returns:
+            str: Path to checkpoint file
+        """
+        checkpoint_data = {
+            "mode": "unified",
+            "samples_processed": samples_processed,
+            "current_split": current_split,
+            "split_index": split_index,
+            "shard_num": shard_num or 0,
+            "last_sample_id": last_sample_id,
+            "processed_ids": processed_ids or [],
+            "dataset_specific": dataset_specific_data or {},
+            "timestamp": int(time.time()),
+            "processor": self.name
+        }
+        
+        # Use consistent filename for easy resume
+        checkpoint_file = os.path.join(self.checkpoint_dir, f"{self.name}_unified_checkpoint.json")
+        
+        # Also save with timestamp for history
+        timestamp_file = os.path.join(self.checkpoint_dir, f"{self.name}_{int(time.time())}.json")
+        
+        # Save both files
+        for file_path in [checkpoint_file, timestamp_file]:
+            with open(file_path, 'w') as f:
+                json.dump(checkpoint_data, f, indent=2)
+        
+        self.logger.info(f"Saved unified checkpoint: {samples_processed} samples, split: {current_split}")
+        return checkpoint_file
+    
+    def load_unified_checkpoint(self, checkpoint_file: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Load unified checkpoint data, compatible with both old and new formats.
+        
+        Args:
+            checkpoint_file: Path to checkpoint file (optional)
+            
+        Returns:
+            dict: Checkpoint data or None if not found
+        """
+        # Try multiple checkpoint locations
+        if checkpoint_file is None:
+            possible_files = [
+                os.path.join(self.checkpoint_dir, f"{self.name}_unified_checkpoint.json"),
+                os.path.join(self.checkpoint_dir, f"{self.name}_streaming_checkpoint.json"),
+            ]
+            
+            # Find the most recent checkpoint
+            for file_path in possible_files:
+                if os.path.exists(file_path):
+                    checkpoint_file = file_path
+                    break
+                    
+            if checkpoint_file is None:
+                # Look for timestamped checkpoints
+                checkpoint_file = self.get_latest_checkpoint()
+                
+        if checkpoint_file and os.path.exists(checkpoint_file):
+            with open(checkpoint_file, 'r') as f:
+                data = json.load(f)
+            
+            # Convert old formats to unified format
+            if data.get('mode') != 'unified':
+                unified_data = {
+                    "mode": "unified",
+                    "samples_processed": data.get('samples_processed', data.get('processed_count', 0)),
+                    "current_split": data.get('current_split', 'train'),
+                    "split_index": data.get('split_index', data.get('current_index', 0)),
+                    "shard_num": data.get('shard_num', 0),
+                    "last_sample_id": data.get('last_sample_id', None),
+                    "processed_ids": data.get('processed_ids', []),
+                    "dataset_specific": data.get('dataset_specific', {}),
+                    "timestamp": data.get('timestamp', int(time.time())),
+                    "processor": data.get('processor', self.name)
+                }
+                data = unified_data
+            
+            self.logger.info(f"Loaded unified checkpoint: {data['samples_processed']} samples, split: {data.get('current_split')}")
             return data
         
         return None
@@ -518,7 +708,8 @@ class BaseProcessor(ABC):
         skip_count = 0
         
         if checkpoint:
-            checkpoint_data = self.load_streaming_checkpoint(checkpoint)
+            # Use unified checkpoint loading which handles all formats
+            checkpoint_data = self.load_unified_checkpoint(checkpoint)
             if checkpoint_data:
                 skip_count = checkpoint_data.get('samples_processed', 0)
                 self.logger.info(f"Resuming streaming from sample {skip_count}")
@@ -844,20 +1035,23 @@ class BaseProcessor(ABC):
             dict: Checkpoint data or None if loading failed
         """
         try:
-            if not os.path.exists(checkpoint_file):
-                self.logger.error(f"Checkpoint file not found: {checkpoint_file}")
+            # Use unified checkpoint loading which handles all formats
+            checkpoint_data = self.load_unified_checkpoint(checkpoint_file)
+            
+            if checkpoint_data:
+                # Validate processor if metadata exists
+                if "metadata" in checkpoint_data:
+                    processor_name = checkpoint_data["metadata"].get("processor")
+                    if processor_name and processor_name != self.name:
+                        self.logger.error(f"Checkpoint is for different processor: {processor_name}")
+                        return None
+                        
+                self.logger.info(f"Loaded checkpoint from {checkpoint_file}")
+                return checkpoint_data
+            else:
+                self.logger.error(f"Failed to load checkpoint from {checkpoint_file}")
                 return None
-
-            with open(checkpoint_file, 'r') as f:
-                checkpoint_data = json.load(f)
-
-            # Validate checkpoint
-            if "metadata" not in checkpoint_data or checkpoint_data["metadata"].get("processor") != self.name:
-                self.logger.error(f"Invalid checkpoint file: {checkpoint_file}")
-                return None
-
-            self.logger.info(f"Loaded checkpoint from {checkpoint_file}")
-            return checkpoint_data
+                
         except Exception as e:
             self.logger.error(f"Error loading checkpoint: {str(e)}")
             return None
