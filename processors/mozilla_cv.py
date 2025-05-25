@@ -443,7 +443,9 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
             "Language": "th",
             "audio": audio_dict,
             "transcript": transcript,
-            "length": length
+            "length": length,
+            "dataset_name": "MozillaCommonVoice",
+            "confidence_score": 1.0  # Original transcripts have perfect confidence
         }
 
     def _save_processing_checkpoint(self, processed_count: int, current_index: int, processed_ids: set) -> None:
