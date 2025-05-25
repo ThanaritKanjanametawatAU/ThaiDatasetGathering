@@ -18,6 +18,15 @@ You can Check the pushed dataset on https://huggingface.co/datasets/Thanarit/Tha
 
 ## Recent Updates (January 2025)
 
+### Custom HuggingFace Repository Support
+- Added `--hf-repo` command-line flag to specify custom target repository
+- Allows pushing datasets to any HuggingFace repository you have access to
+- Defaults to `Thanarit/Thai-Voice` if not specified
+- Works with both cached and streaming modes
+- Supports append mode to custom repositories
+
+## Recent Updates (January 2025)
+
 ### GigaSpeech2 Native Transcript Support
 - Implemented native TSV transcript loading from GigaSpeech2's `text` column
 - No longer requires external transcript mapping files
@@ -162,6 +171,12 @@ python main.py --fresh --all --enable-stt --stt-batch-size 32
 # Performance optimization for high-bandwidth connections
 export HF_HUB_ENABLE_HF_TRANSFER=1
 python main.py --fresh --all
+
+# Push to a custom HuggingFace repository
+python main.py --fresh --all --hf-repo "myusername/my-thai-dataset"
+
+# Append to a custom repository
+python main.py --append MozillaCV --hf-repo "myorg/thai-audio-collection"
 ```
 
 ### Testing

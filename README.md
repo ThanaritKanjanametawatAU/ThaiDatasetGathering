@@ -93,6 +93,12 @@ python main.py --fresh --all --sample
 
 # Process a specific number of samples from each dataset
 python main.py --fresh --all --sample --sample-size 10
+
+# Push to a custom HuggingFace repository
+python main.py --fresh --all --hf-repo "myusername/my-thai-dataset"
+
+# Append to a custom repository in streaming mode
+python main.py --append MozillaCV --streaming --hf-repo "myorg/thai-audio-collection"
 ```
 
 ### Command-Line Options
@@ -120,6 +126,7 @@ python main.py --fresh --all --sample --sample-size 10
 **Upload Options:**
 - `--no-upload`: Skip uploading to Huggingface
 - `--private`: Make the Huggingface dataset private
+- `--hf-repo REPO`: Specify custom HuggingFace repository to push dataset to (e.g., 'username/dataset-name'). Defaults to 'Thanarit/Thai-Voice' if not specified
 
 **Audio Processing:**
 - `--no-standardization`: Disable audio standardization
