@@ -69,6 +69,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--enable-stt", action="store_true", help="Enable STT for missing transcripts")
     parser.add_argument("--stt-batch-size", type=int, default=16, help="Batch size for STT processing (default: 16)")
     parser.add_argument("--no-stt", action="store_true", help="Explicitly disable STT (overrides config)")
+    
+    # HuggingFace repository options
+    parser.add_argument("--hf-repo", type=str, help="HuggingFace repository to push dataset to (e.g., 'username/dataset-name')")
 
     args = parser.parse_args()
 
@@ -287,8 +290,11 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
     # Initialize streaming uploader
     uploader = None
     if not args.no_upload:
+        # Determine target repository - use command-line arg if provided, otherwise use default
+        target_repo = args.hf_repo if args.hf_repo else TARGET_DATASET["name"]
+        
         uploader = StreamingUploader(
-            repo_id=TARGET_DATASET["name"],
+            repo_id=target_repo,
             token=token,
             private=args.private,
             append_mode=args.append
@@ -297,7 +303,8 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
     # Track global sample ID
     start_id = 1
     if args.append:
-        last_id = get_last_id(TARGET_DATASET["name"])
+        # Use the same target repository
+        last_id = get_last_id(target_repo)
         if last_id is not None:
             start_id = last_id + 1
             logger.info(f"Appending to existing dataset, starting from ID: S{start_id}")
@@ -485,8 +492,11 @@ def main() -> int:
     start_id = 1
 
     if args.append:
+        # Determine target repository - use command-line arg if provided, otherwise use default
+        target_repo = args.hf_repo if args.hf_repo else TARGET_DATASET["name"]
+        
         # Get last ID from existing dataset
-        last_id = get_last_id(TARGET_DATASET["name"])
+        last_id = get_last_id(target_repo)
         if last_id is not None:
             start_id = last_id + 1
             logger.info(f"Appending to existing dataset, starting from ID: S{start_id}")
@@ -525,12 +535,15 @@ def main() -> int:
             logger.error("Failed to create Huggingface dataset")
             return EXIT_CODES["UPLOAD_ERROR"]
 
+        # Determine target repository - use command-line arg if provided, otherwise use default
+        target_repo = args.hf_repo if args.hf_repo else TARGET_DATASET["name"]
+        
         # Upload dataset
-        if not upload_dataset(dataset, TARGET_DATASET["name"], private=args.private, token=token):
+        if not upload_dataset(dataset, target_repo, private=args.private, token=token):
             logger.error("Failed to upload dataset to Huggingface")
             return EXIT_CODES["UPLOAD_ERROR"]
 
-        logger.info(f"Successfully uploaded dataset to {TARGET_DATASET['name']}")
+        logger.info(f"Successfully uploaded dataset to {target_repo}")
 
     logger.info("Thai Audio Dataset Collection completed successfully")
     return EXIT_CODES["SUCCESS"]
