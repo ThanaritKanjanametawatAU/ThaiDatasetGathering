@@ -93,6 +93,10 @@ The project has been updated to use HuggingFace's native audio format for better
 - Speaker IDs are preserved across dataset processing runs
 - Supports both cached and streaming modes
 - Persistent speaker models stored in checkpoints directory
+- **Fresh Mode Support (January 26, 2025)**:
+  - `--fresh` flag now resets speaker ID counter to 1 instead of continuing from saved state
+  - Deletes existing speaker model file when fresh mode is enabled
+  - Ensures clean start for new dataset collections
 
 ## Architecture
 
