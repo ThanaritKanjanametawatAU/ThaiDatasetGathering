@@ -40,14 +40,21 @@ class TestCheckpointSystem(unittest.TestCase):
         
         # Create a concrete test processor class
         class TestProcessor(BaseProcessor):
+            def __init__(self, config):
+                super().__init__(config)
+                self.source = "test_dataset"  # Add source for get_available_splits
+            
             def process(self, checkpoint=None, sample_mode=False, sample_size=5):
                 for i in range(sample_size):
                     yield {
                         "ID": f"S{i+1}",
+                        "speaker_id": f"SPK_{i+1:05d}",
                         "Language": "th",
                         "audio": {"path": f"test_{i}.wav", "bytes": b"test"},
                         "transcript": f"Test transcript {i}",
-                        "length": 1.0
+                        "length": 1.0,
+                        "dataset_name": "TestDataset",
+                        "confidence_score": 1.0
                     }
             
             def process_streaming(self, checkpoint=None, sample_mode=False, sample_size=5):
@@ -59,14 +66,21 @@ class TestCheckpointSystem(unittest.TestCase):
             def estimate_size(self):
                 return 100
             
+            def get_available_splits(self):
+                # Override to avoid trying to load test_dataset
+                return ["train"]
+            
             def _process_single_split(self, split, checkpoint=None, sample_mode=False, sample_size=5):
                 for i in range(sample_size):
                     yield {
                         "ID": f"S{split}_{i+1}",
+                        "speaker_id": f"SPK_{i+1:05d}",
                         "Language": "th",
                         "audio": {"path": f"test_{split}_{i}.wav", "bytes": b"test"},
                         "transcript": f"Test transcript {split} {i}",
-                        "length": 1.0
+                        "length": 1.0,
+                        "dataset_name": "TestDataset",
+                        "confidence_score": 1.0
                     }
         
         self.processor = TestProcessor(self.config)
@@ -233,6 +247,7 @@ class TestCheckpointSystem(unittest.TestCase):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self.sample_count = 0
+                self.source = "test_dataset"
             
             def process(self, checkpoint=None, sample_mode=False, sample_size=5):
                 pass
@@ -246,6 +261,9 @@ class TestCheckpointSystem(unittest.TestCase):
             def estimate_size(self):
                 return 100
             
+            def get_available_splits(self):
+                return ["train"]
+            
             def _process_single_split(self, split, checkpoint=None, sample_mode=False, sample_size=5):
                 for i in range(sample_size):
                     if self.sample_count == 3:
@@ -253,10 +271,13 @@ class TestCheckpointSystem(unittest.TestCase):
                     self.sample_count += 1
                     yield {
                         "ID": f"S{i+1}",
+                        "speaker_id": f"SPK_{i+1:05d}",
                         "Language": "th",
                         "audio": {"path": f"test_{i}.wav", "bytes": b"test"},
                         "transcript": f"Test transcript {i}",
-                        "length": 1.0
+                        "length": 1.0,
+                        "dataset_name": "TestDataset",
+                        "confidence_score": 1.0
                     }
         
         error_processor = ErrorProcessor(self.config)
