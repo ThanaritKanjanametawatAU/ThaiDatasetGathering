@@ -13,6 +13,24 @@ A modular system to gather Thai audio data from multiple sources and combine the
 - **dataset_name**: Name of the source dataset (e.g., "GigaSpeech2", "ProcessedVoiceTH")
 - **confidence_score**: Confidence score of the transcript (1.0 for original transcripts)
 
+## Features
+
+- **Modular Design**: Easily extensible to add new dataset sources
+- **HuggingFace Integration**: Direct upload to HuggingFace Hub
+- **Audio Standardization**: Converts all audio to consistent format (16kHz mono)
+- **Volume Normalization**: Normalizes audio to -20dB for consistent volume
+- **Batch Processing**: Efficient processing of large datasets
+- **Progress Tracking**: Visual progress bars for processing
+- **Checkpoint System**: Resume interrupted processing with unified checkpoint system (v2.0)
+- **Schema Validation**: Ensures data integrity across all sources
+- **Streaming Mode**: Process datasets without downloading everything
+- **Custom Repository Support**: Push datasets to any HuggingFace repository with --hf-repo flag
+- **Speaker Identification**: Automatic speaker clustering using pyannote embeddings
+  - Adaptive clustering that adjusts based on similarity distribution
+  - AgglomerativeClustering for small batches (<50 samples) for better accuracy
+  - HDBSCAN for larger batches with configurable parameters
+  - Persistent speaker models across processing runs
+
 ## Data Sources
 
 1. **GigaSpeech2** (GitHub: SpeechColab/GigaSpeech2) - Thai refined only
@@ -139,6 +157,16 @@ python main.py --append MozillaCV --streaming --hf-repo "myorg/thai-audio-collec
 - `--no-stt`: Disable Speech-to-Text processing
 - `--enable-stt`: Enable Speech-to-Text processing for missing transcripts (automatically fills blank transcripts)
 - `--stt-batch-size N`: Batch size for STT processing (default: 16)
+
+**Speaker Identification Options:**
+- `--enable-speaker-id`: Enable automatic speaker identification and clustering
+- `--speaker-model MODEL`: Speaker embedding model to use (default: 'pyannote/embedding')
+- `--speaker-batch-size N`: Batch size for speaker processing (default: 10000)
+- `--speaker-threshold F`: Similarity threshold for speaker clustering (default: 0.6)
+- `--speaker-min-cluster-size N`: Minimum cluster size for HDBSCAN (default: 5)
+- `--speaker-min-samples N`: Minimum samples for HDBSCAN (default: 3)
+- `--speaker-epsilon F`: Epsilon for HDBSCAN (default: 0.5)
+- `--store-embeddings`: Store speaker embeddings (increases storage)
 
 **Other Options:**
 - `--output DIR`: Output directory for local dataset

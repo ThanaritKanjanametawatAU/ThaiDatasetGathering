@@ -77,11 +77,16 @@ The project has been updated to use HuggingFace's native audio format for better
 ### Speaker Identification (January 2025)
 - Automatic speaker identification and clustering across all audio samples
 - Uses pyannote/embedding model for speaker embeddings
-- HDBSCAN clustering for identifying unique speakers
+- **Improved Clustering Algorithm (January 26, 2025)**:
+  - Adaptive clustering that adjusts based on similarity distribution
+  - Uses AgglomerativeClustering for small batches (<50 samples) for better accuracy
+  - Dynamic distance threshold based on mean similarity
+  - HDBSCAN for larger batches with configurable parameters
 - Generates consistent speaker IDs (SPK_00001, SPK_00002, etc.)
 - Each processor implements speaker ID generation
 - Speaker IDs are preserved across dataset processing runs
 - Supports both cached and streaming modes
+- Persistent speaker models stored in checkpoints directory
 
 ## Architecture
 
@@ -178,6 +183,15 @@ python main.py --fresh --all --streaming --resume
 # Enable Speech-to-Text for missing transcripts
 python main.py --fresh --all --enable-stt --stt-batch-size 32
 
+# Enable Speaker Identification
+python main.py --fresh --all --enable-speaker-id --streaming
+
+# Speaker ID with custom parameters
+python main.py --fresh --all --enable-speaker-id --speaker-min-cluster-size 5 --speaker-min-samples 3 --speaker-threshold 0.6
+
+# Full test with all features
+python main.py --fresh --all --sample --sample-size 50 --enable-speaker-id --enable-stt --streaming
+
 # Performance optimization for high-bandwidth connections
 export HF_HUB_ENABLE_HF_TRANSFER=1
 python main.py --fresh --all
@@ -210,6 +224,8 @@ python -m unittest tests.test_speaker_identification
 python -m unittest tests.test_speaker_id_streaming
 python -m unittest tests.test_huggingface_schema
 python -m unittest tests.test_huggingface_schema_complete
+python -m unittest tests.test_clustering_specific_samples
+python -m unittest tests.test_speaker_clustering_accuracy
 ```
 
 ## Dataset Schema
