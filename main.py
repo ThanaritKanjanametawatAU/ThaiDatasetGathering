@@ -385,7 +385,8 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
             'batch_size': args.speaker_batch_size,
             'store_embeddings': args.store_embeddings,
             'embedding_path': os.path.join(args.output or '.', 'speaker_embeddings.h5'),
-            'model_path': os.path.join(CHECKPOINT_DIR, 'speaker_model.json')
+            'model_path': os.path.join(CHECKPOINT_DIR, 'speaker_model.json'),
+            'fresh': args.fresh  # Pass fresh flag to speaker identification
         }
         
         speaker_identifier = SpeakerIdentification(speaker_config)
@@ -658,7 +659,8 @@ def main() -> int:
             'batch_size': args.speaker_batch_size,
             'store_embeddings': args.store_embeddings,
             'embedding_path': os.path.join(args.output or '.', 'speaker_embeddings.h5'),
-            'model_path': os.path.join(CHECKPOINT_DIR, 'speaker_model.json')
+            'model_path': os.path.join(CHECKPOINT_DIR, 'speaker_model.json'),
+            'fresh': args.fresh  # Pass fresh flag to speaker identification
         }
         
         speaker_identifier = SpeakerIdentification(speaker_config)

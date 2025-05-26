@@ -422,6 +422,31 @@ class SpeakerIdentification:
     
     def load_model(self):
         """Load speaker model from disk."""
+        # Check if fresh flag is set - handle different types
+        fresh_value = self.config.get('fresh', False)
+        # Convert string values to boolean
+        if isinstance(fresh_value, str):
+            fresh_value = fresh_value.lower() in ['true', 'yes', '1']
+        elif isinstance(fresh_value, int):
+            fresh_value = bool(fresh_value)
+        
+        if fresh_value:
+            logger.info("Fresh mode enabled - resetting speaker counter to 1")
+            # Delete existing model file if it exists
+            if os.path.exists(self.model_path):
+                try:
+                    os.remove(self.model_path)
+                    logger.info(f"Deleted existing speaker model: {self.model_path}")
+                except Exception as e:
+                    logger.error(f"Failed to delete speaker model: {str(e)}")
+            
+            # Reset to initial state
+            self.speaker_counter = 1
+            self.existing_clusters = {}
+            self.cluster_centroids = None
+            return
+        
+        # Normal load behavior when not fresh
         if not os.path.exists(self.model_path):
             logger.info("No existing speaker model found")
             return
