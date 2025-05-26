@@ -137,6 +137,7 @@ STREAMING_CONFIG = {
     "retry_delay": 5,             # Delay between retries in seconds
 }
 
+
 # Error categories
 class ErrorCategory(Enum):
     NETWORK = auto()
@@ -146,6 +147,7 @@ class ErrorCategory(Enum):
     AUTHENTICATION = auto()
     UPLOAD = auto()
     UNKNOWN = auto()
+
 
 # Exit codes
 EXIT_CODES = {

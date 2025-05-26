@@ -8,19 +8,20 @@ import sys
 import argparse
 import logging
 import importlib
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 
 from config import (
     DATASET_CONFIG, TARGET_DATASET, LOG_CONFIG, EXIT_CODES,
-    HF_TOKEN_FILE, CHECKPOINT_DIR, LOG_DIR, STREAMING_CONFIG, STT_CONFIG
+    HF_TOKEN_FILE, CHECKPOINT_DIR, LOG_DIR
 )
 from utils.logging import setup_logging
 from utils.huggingface import read_hf_token, authenticate_hf, create_hf_dataset, upload_dataset, get_last_id
-from utils.streaming import StreamingUploader, StreamingBatchProcessor
+from utils.streaming import StreamingUploader
 from processors.base_processor import BaseProcessor
 
 # Set up logger
 logger = logging.getLogger(__name__)
+
 
 def parse_arguments() -> argparse.Namespace:
     """
@@ -48,31 +49,35 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--output", help="Output directory for local dataset")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument("--sample", action="store_true", help="Process only a small sample from each dataset")
-    parser.add_argument("--sample-size", type=int, default=5, help="Number of samples to process in sample mode (default: 5)")
-    parser.add_argument("--sample-archives", type=int, default=1, help="Number of archive files to download in sample mode (default: 1)")
-    parser.add_argument("--chunk-size", type=int, default=10000, help="Number of samples per chunk in full processing mode (default: 10000)")
-    parser.add_argument("--max-cache-gb", type=float, default=100.0, help="Maximum cache size in GB (default: 100)")
+    parser.add_argument("--sample-size", type=int, default=5,
+                        help="Number of samples to process in sample mode (default: 5)")
+    parser.add_argument("--sample-archives", type=int, default=1,
+                        help="Number of archive files to download in sample mode (default: 1)")
+    parser.add_argument("--chunk-size", type=int, default=10000,
+                        help="Number of samples per chunk in full processing mode (default: 10000)")
+    parser.add_argument("--max-cache-gb", type=float, default=100.0,
+                        help="Maximum cache size in GB (default: 100)")
     parser.add_argument("--clear-cache", action="store_true", help="Clear cache before processing")
-    
     # Streaming options
-    parser.add_argument("--streaming", action="store_true", help="Use streaming mode to process datasets without full download")
-    parser.add_argument("--streaming-batch-size", type=int, default=1000, help="Batch size for streaming mode (default: 1000)")
-    parser.add_argument("--upload-batch-size", type=int, default=10000, help="Number of samples before uploading a shard (default: 10000)")
-    
+    parser.add_argument("--streaming", action="store_true",
+                        help="Use streaming mode to process datasets without full download")
+    parser.add_argument("--streaming-batch-size", type=int, default=1000,
+                        help="Batch size for streaming mode (default: 1000)")
+    parser.add_argument("--upload-batch-size", type=int, default=10000,
+                        help="Number of samples before uploading a shard (default: 10000)")
     # Audio processing options
-    parser.add_argument("--no-standardization", action="store_true", help="Disable audio standardization (keep original format)")
+    parser.add_argument("--no-standardization", action="store_true",
+                        help="Disable audio standardization (keep original format)")
     parser.add_argument("--sample-rate", type=int, default=16000, help="Target sample rate in Hz (default: 16000)")
     parser.add_argument("--target-db", type=float, default=-20.0, help="Target volume level in dB (default: -20.0)")
     parser.add_argument("--no-volume-norm", action="store_true", help="Disable volume normalization")
-    
     # STT options
     parser.add_argument("--enable-stt", action="store_true", help="Enable STT for missing transcripts")
     parser.add_argument("--stt-batch-size", type=int, default=16, help="Batch size for STT processing (default: 16)")
     parser.add_argument("--no-stt", action="store_true", help="Explicitly disable STT (overrides config)")
-    
     # HuggingFace repository options
-    parser.add_argument("--hf-repo", type=str, help="HuggingFace repository to push dataset to (e.g., 'username/dataset-name')")
-    
+    parser.add_argument("--hf-repo", type=str,
+                        help="HuggingFace repository to push dataset to (e.g., 'username/dataset-name')")
     # Speaker identification arguments
     speaker_group = parser.add_argument_group('Speaker Identification')
     speaker_group.add_argument(

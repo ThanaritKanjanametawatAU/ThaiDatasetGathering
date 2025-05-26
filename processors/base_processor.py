@@ -1145,3 +1145,166 @@ class BaseProcessor(ABC):
         # Get max and add 1
         next_num = max(numeric_ids) + 1
         return f"S{next_num}"
+    
+    def get_available_splits(self, dataset_source: str = None, default_splits: List[str] = None) -> List[str]:
+        """
+        Get available splits for a dataset.
+        
+        Args:
+            dataset_source: Dataset source identifier (optional, uses self.source if not provided)
+            default_splits: Default splits to check (default: ["train", "validation", "test"])
+            
+        Returns:
+            List[str]: Available splits
+        """
+        from datasets import load_dataset
+        
+        # Use instance source if not provided
+        if dataset_source is None:
+            dataset_source = getattr(self, 'source', None)
+            if dataset_source is None:
+                raise ValueError("No dataset source provided and self.source not set")
+        
+        if default_splits is None:
+            default_splits = ["train", "validation", "test"]
+            
+        available_splits = []
+        for split in default_splits:
+            try:
+                # Try loading with streaming to check if split exists
+                dataset = load_dataset(
+                    dataset_source,
+                    split=split,
+                    streaming=True
+                )
+                # Try to get first item to verify split has data
+                next(iter(dataset))
+                available_splits.append(split)
+                self.logger.info(f"Found split: {split}")
+            except (ValueError, StopIteration) as e:
+                self.logger.debug(f"Split {split} not available: {str(e)}")
+            except Exception as e:
+                self.logger.warning(f"Error checking split {split}: {str(e)}")
+        
+        if not available_splits:
+            self.logger.warning("No standard splits found, defaulting to 'train'")
+            available_splits = ["train"]
+        
+        return available_splits
+    
+    def _process_split_streaming_generic(self, dataset_source: str, split: str, 
+                                       transcript_field: str = "transcript",
+                                       skip_count: int = 0, sample_limit: Optional[int] = None,
+                                       prefix: str = None) -> Iterator[Dict[str, Any]]:
+        """
+        Generic streaming split processor to reduce code duplication.
+        
+        Args:
+            dataset_source: Dataset source identifier
+            split: Split name
+            transcript_field: Field name for transcript (e.g., "sentence" or "transcript")
+            skip_count: Number of samples to skip
+            sample_limit: Maximum samples to process
+            prefix: Prefix for sample IDs
+            
+        Yields:
+            Dict[str, Any]: Processed samples
+        """
+        from datasets import load_dataset
+        
+        self.logger.info(f"Processing {split} split in streaming mode")
+        
+        if prefix is None:
+            prefix = f"{self.name}_{split}"
+        
+        # Load dataset in streaming mode
+        dataset = load_dataset(
+            dataset_source,
+            split=split,
+            streaming=True
+        )
+        
+        samples_processed = 0
+        samples_yielded = 0
+        
+        for sample in dataset:
+            # Skip samples if resuming
+            if samples_processed < skip_count:
+                samples_processed += 1
+                continue
+            
+            # Check sample limit
+            if sample_limit and samples_yielded >= sample_limit:
+                self.logger.info(f"Reached sample limit of {sample_limit}")
+                break
+            
+            try:
+                # Extract audio and transcript
+                audio_data = sample.get('audio', {})
+                transcript = sample.get(transcript_field, '')
+                
+                # Skip if no audio
+                if not audio_data:
+                    self.logger.warning(f"Skipping sample {samples_processed} without audio")
+                    samples_processed += 1
+                    continue
+                
+                # Extract audio bytes
+                audio_bytes = self._extract_audio_bytes(audio_data)
+                if not audio_bytes:
+                    samples_processed += 1
+                    continue
+                
+                # Process audio
+                audio_hf = self._process_audio_for_streaming(audio_bytes, f"{prefix}_{samples_processed}")
+                if not audio_hf:
+                    samples_processed += 1
+                    continue
+                
+                # Get additional fields (can be overridden in subclasses)
+                additional_fields = self._extract_additional_fields(sample)
+                
+                # Create sample
+                processed_sample = self._create_streaming_sample(
+                    audio_hf, transcript, 
+                    samples_processed, samples_yielded,
+                    additional_fields
+                )
+                
+                # Apply STT if enabled and transcript is empty
+                if self.config.get("enable_stt", False) and not processed_sample.get("transcript", "").strip():
+                    processed_sample = self.process_sample_with_stt(processed_sample, samples_processed)
+                
+                # Validate sample
+                errors = self.validate_sample(processed_sample)
+                if errors:
+                    self.logger.warning(f"Sample {samples_processed} validation errors: {errors}")
+                    samples_processed += 1
+                    continue
+                
+                samples_processed += 1
+                samples_yielded += 1
+                
+                yield processed_sample
+                
+                # Log progress
+                self._log_streaming_progress(samples_processed)
+                
+            except Exception as e:
+                self.logger.error(f"Error processing sample {samples_processed}: {str(e)}")
+                samples_processed += 1
+                continue
+        
+        self.logger.info(f"Completed {split} split: {samples_yielded} samples yielded out of {samples_processed} processed")
+    
+    def _extract_additional_fields(self, sample: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract additional fields from sample. Override in subclasses for dataset-specific fields.
+        
+        Args:
+            sample: Raw sample data
+            
+        Returns:
+            Dict[str, Any]: Additional fields to include in processed sample
+        """
+        return {}
