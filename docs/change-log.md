@@ -14,6 +14,19 @@
 - Fixed embedding extraction to use proper model inference pipeline
 - Successfully tested full pipeline with all features enabled
 
+### Improved (Speaker Clustering Algorithm - Later in Day)
+- Fixed speaker identification accuracy issues that were causing poor clustering
+- Reverted to original 'pyannote/embedding' model (more stable)
+- Implemented adaptive clustering algorithm that adjusts based on similarity distribution
+- Uses AgglomerativeClustering for small batches (<50 samples) for better accuracy
+- Dynamic distance threshold based on mean similarity:
+  - High similarity (>0.9): threshold = 0.2 (min similarity 0.8)
+  - Medium similarity (>0.7): threshold = 0.4 (min similarity 0.6)
+  - Low similarity: threshold = 0.6 (min similarity 0.4)
+- HDBSCAN still used for larger batches with configurable parameters
+- Fixed JSON serialization issue with numpy int64 types in speaker model saving
+- Restored original clustering parameters as defaults (min_cluster_size=5, min_samples=3)
+
 ## 2025-05-25
 
 ### Added (Speaker Identification Feature)
