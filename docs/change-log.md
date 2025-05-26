@@ -1,5 +1,19 @@
 # Change Log
 
+## 2025-05-26
+
+### Fixed (Speaker Identification Improvements)
+- Fixed AttributeError in speaker identification when cluster_centroids was None
+- Changed default embedding model from 'pyannote/embedding' to 'pyannote/wespeaker-voxceleb-resnet34-LM'
+- Improved clustering parameters for better speaker separation:
+  - Reduced min_cluster_size from 15 to 5
+  - Reduced min_samples from 10 to 3
+  - Increased cluster_selection_epsilon from 0.3 to 0.5
+  - Reduced similarity_threshold from 0.7 to 0.6
+- Added proper audio resampling to 16kHz for speaker embedding extraction
+- Fixed embedding extraction to use proper model inference pipeline
+- Successfully tested full pipeline with all features enabled
+
 ## 2025-05-25
 
 ### Added (Speaker Identification Feature)

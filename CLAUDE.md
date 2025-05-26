@@ -268,4 +268,7 @@ python -m mypy .
 
 ## Quick Verification Checklist
 
-- Always check that everything is running fine and the dataset sample is uploaded to huggingface with the command python main.py --fresh --all --streaming --sample
+- Always run python main.py --fresh --all --sample --sample-size 5 --enable-speaker-id --enable-stt --streaming to test and check huggingface page when the command finishes every time new feature is implementation to make completely sure that it will work as expected.
+```
+
+</invoke>

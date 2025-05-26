@@ -120,6 +120,6 @@ widgetsnbextension==4.0.14
 xxhash==3.5.0
 yarl==1.20.0
 zipp @ file:///home/conda/feedstock_root/build_artifacts/zipp_1732827521216/work
-pyannote.audio==3.3.3
+pyannote.audio==3.3.2
 h5py==3.14.0
 hdbscan==0.8.39

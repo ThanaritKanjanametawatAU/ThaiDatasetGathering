@@ -175,16 +175,16 @@ STT_CONFIG = {
 # Speaker Identification Configuration
 SPEAKER_ID_CONFIG = {
     "enabled": False,  # Default disabled, enable with --enable-speaker-id
-    "model": "pyannote/embedding",
-    "embedding_dim": 512,
+    "model": "pyannote/wespeaker-voxceleb-resnet34-LM",
+    "embedding_dim": 256,
     "batch_size": 10000,
     "clustering": {
         "algorithm": "hdbscan",
-        "min_cluster_size": 15,
-        "min_samples": 10,
+        "min_cluster_size": 5,  # Reduced from 15 for better clustering
+        "min_samples": 3,       # Reduced from 10 for better clustering
         "metric": "cosine",
-        "cluster_selection_epsilon": 0.3,
-        "similarity_threshold": 0.7
+        "cluster_selection_epsilon": 0.5,  # Increased from 0.3 for more inclusive clusters
+        "similarity_threshold": 0.6        # Reduced from 0.7 for more inclusive matching
     },
     "storage": {
         "store_embeddings": False,

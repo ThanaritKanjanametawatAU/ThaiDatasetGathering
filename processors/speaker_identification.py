@@ -8,12 +8,13 @@ and cluster them to identify unique speakers across the dataset.
 import torch
 import numpy as np
 import h5py
-from pyannote.audio import Model
+from pyannote.audio import Model, Inference
 import hdbscan
 from typing import List, Dict, Optional, Tuple
 import logging
 import json
 import os
+import librosa
 
 logger = logging.getLogger(__name__)
 
@@ -39,17 +40,18 @@ class SpeakerIdentification:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         # Load embedding model
-        logger.info(f"Loading embedding model: {config.get('model', 'pyannote/embedding')}")
+        logger.info(f"Loading embedding model: {config.get('model', 'pyannote/wespeaker-voxceleb-resnet34-LM')}")
         self.model = Model.from_pretrained(
-            config.get('model', 'pyannote/embedding')
+            config.get('model', 'pyannote/wespeaker-voxceleb-resnet34-LM')
         ).to(self.device)
         
-        # Clustering parameters (conservative for over-segmentation)
+        # Clustering parameters from config
+        clustering_config = config.get('clustering', {})
         self.clustering_params = {
-            'min_cluster_size': config.get('min_cluster_size', 15),
-            'min_samples': config.get('min_samples', 10),
+            'min_cluster_size': clustering_config.get('min_cluster_size', 5),
+            'min_samples': clustering_config.get('min_samples', 3),
             'metric': 'euclidean',  # Will use normalized embeddings for cosine similarity
-            'cluster_selection_epsilon': config.get('epsilon', 0.3),
+            'cluster_selection_epsilon': clustering_config.get('cluster_selection_epsilon', 0.5),
             'cluster_selection_method': 'eom',
             'prediction_data': True
         }
@@ -65,6 +67,7 @@ class SpeakerIdentification:
         self.speaker_counter = 1
         self.existing_clusters = {}
         self.model_path = config.get('model_path', 'speaker_model.json')
+        self.cluster_centroids = None  # Initialize to avoid AttributeError
         
         # Load existing model if available
         self.load_model()
@@ -79,19 +82,32 @@ class SpeakerIdentification:
         Returns:
             Speaker embedding as numpy array
         """
+        # Resample to 16kHz if needed
+        if sample_rate != 16000:
+            audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=16000)
+            sample_rate = 16000
+        
+        # Use Inference wrapper for proper embedding extraction
+        # This handles windowing and model-specific preprocessing
         with torch.no_grad():
-            # Prepare audio for model
-            audio_tensor = torch.from_numpy(audio).float().to(self.device)
-            if audio_tensor.dim() == 1:
-                audio_tensor = audio_tensor.unsqueeze(0)
+            waveform = torch.from_numpy(audio).float()
             
-            # Extract embedding
-            embedding = self.model({
-                'waveform': audio_tensor,
-                'sample_rate': sample_rate
-            })
+            # Ensure 2D tensor for Inference (channel, samples)
+            if waveform.dim() == 1:
+                waveform = waveform.unsqueeze(0)
             
-            return embedding.cpu().numpy().squeeze()
+            # Create input dict for Inference
+            waveform_dict = {
+                "waveform": waveform,
+                "sample_rate": sample_rate
+            }
+            
+            # Use inference wrapper to get embedding
+            # This will handle the 5-second duration requirement internally
+            inference = Inference(self.model, window="whole")
+            embedding = inference(waveform_dict)
+            
+            return embedding
     
     def process_batch(self, audio_samples: List[Dict]) -> List[str]:
         """Process a batch of audio samples and assign speaker IDs.
@@ -105,8 +121,9 @@ class SpeakerIdentification:
         # Extract embeddings
         embeddings = []
         sample_ids = []
+        failed_samples = []
         
-        for sample in audio_samples:
+        for i, sample in enumerate(audio_samples):
             try:
                 embedding = self.extract_embedding(
                     sample['audio']['array'],
@@ -116,15 +133,39 @@ class SpeakerIdentification:
                 sample_ids.append(sample['ID'])
             except Exception as e:
                 logger.error(f"Failed to extract embedding for {sample['ID']}: {str(e)}")
-                embeddings.append(np.zeros(512))  # Dummy embedding
-                sample_ids.append(sample['ID'])
+                # Track failed samples instead of using dummy embeddings
+                failed_samples.append((i, sample['ID']))
+        
+        # Handle case where some embeddings failed
+        if not embeddings:
+            # All samples failed - assign unique IDs to all
+            logger.warning("All embedding extractions failed. Assigning unique speaker IDs.")
+            speaker_ids = []
+            for sample in audio_samples:
+                speaker_ids.append(f"SPK_{self.speaker_counter:05d}")
+                self.speaker_counter += 1
+            return speaker_ids
         
         embeddings = np.array(embeddings)
         
-        # Cluster embeddings
-        speaker_ids = self.cluster_embeddings(embeddings, sample_ids)
+        # Cluster successful embeddings
+        clustered_speaker_ids = self.cluster_embeddings(embeddings, sample_ids)
         
-        return speaker_ids
+        # Build final speaker ID list, inserting IDs for failed samples
+        final_speaker_ids = []
+        clustered_idx = 0
+        
+        for i in range(len(audio_samples)):
+            if any(failed_i == i for failed_i, _ in failed_samples):
+                # This sample failed - assign unique ID
+                final_speaker_ids.append(f"SPK_{self.speaker_counter:05d}")
+                self.speaker_counter += 1
+            else:
+                # Use clustered ID
+                final_speaker_ids.append(clustered_speaker_ids[clustered_idx])
+                clustered_idx += 1
+        
+        return final_speaker_ids
     
     def cluster_embeddings(self, embeddings: np.ndarray, sample_ids: List[str]) -> List[str]:
         """Cluster embeddings and assign speaker IDs.
@@ -136,6 +177,15 @@ class SpeakerIdentification:
         Returns:
             List of speaker IDs
         """
+        # Handle case with too few samples for clustering
+        if len(embeddings) < self.clustering_params.get('min_cluster_size', 2):
+            # Too few samples - each gets unique ID
+            speaker_ids = []
+            for _ in range(len(embeddings)):
+                speaker_ids.append(f"SPK_{self.speaker_counter:05d}")
+                self.speaker_counter += 1
+            return speaker_ids
+        
         # Normalize embeddings for cosine similarity (using euclidean on normalized = cosine)
         normalized_embeddings = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
         
@@ -187,7 +237,7 @@ class SpeakerIdentification:
         if not hasattr(self, 'cluster_centroids') or self.cluster_centroids is None:
             return labels
         
-        threshold = self.config.get('threshold', 0.7)
+        threshold = self.config.get('clustering', {}).get('similarity_threshold', 0.6)
         
         # Compute similarities between new embeddings and existing centroids
         similarities = self._compute_cosine_similarity(embeddings, self.cluster_centroids)
@@ -280,16 +330,20 @@ class SpeakerIdentification:
         # Compute cluster centroids for valid clusters
         unique_labels = set(labels) - {-1}
         
-        if not hasattr(self, 'cluster_centroids'):
-            self.cluster_centroids = []
+        # Initialize cluster_centroids as list if it's None
+        if self.cluster_centroids is None:
+            cluster_centroids_list = []
+        else:
+            # Convert existing numpy array to list
+            cluster_centroids_list = self.cluster_centroids.tolist() if isinstance(self.cluster_centroids, np.ndarray) else []
         
         for label in unique_labels:
             if label < 1000:  # New cluster (not merged with existing)
                 mask = labels == label
                 centroid = embeddings[mask].mean(axis=0)
-                self.cluster_centroids.append(centroid)
+                cluster_centroids_list.append(centroid)
         
-        self.cluster_centroids = np.array(self.cluster_centroids) if self.cluster_centroids else None
+        self.cluster_centroids = np.array(cluster_centroids_list) if cluster_centroids_list else None
         
         # Save model
         self.save_model()
