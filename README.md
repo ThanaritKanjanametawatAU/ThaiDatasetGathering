@@ -64,6 +64,13 @@ A modular system to gather Thai audio data from multiple sources and combine the
 
 ## Usage
 
+
+### Main Command (Test with this ALWAYS)
+```bash
+python main.py --fresh GigaSpeech2 MozillaCommonVoice  --sample --sample-size 100 --enable-speaker-id --enable-stt --streaming --speaker-min-cluster-size 5 --speaker-min-samples 3 --speaker-epsilon 0.5 --speaker-threshold 0.6
+
+```
+
 ### Streaming Mode (NEW!)
 
 Process large datasets without downloading everything to disk. Perfect for datasets that exceed your available storage:
