@@ -179,12 +179,12 @@ SPEAKER_ID_CONFIG = {
     "embedding_dim": 256,
     "batch_size": 10000,
     "clustering": {
-        "algorithm": "hdbscan",
-        "min_cluster_size": 5,  # Reduced from 15 for better clustering
-        "min_samples": 3,       # Reduced from 10 for better clustering
+        "algorithm": "adaptive",  # Uses different algorithms based on batch size
+        "min_cluster_size": 2,    # Minimum cluster size for HDBSCAN
+        "min_samples": 1,         # Minimum samples for core points
         "metric": "cosine",
-        "cluster_selection_epsilon": 0.5,  # Increased from 0.3 for more inclusive clusters
-        "similarity_threshold": 0.6        # Reduced from 0.7 for more inclusive matching
+        "cluster_selection_epsilon": 0.3,  # Distance threshold for clustering
+        "similarity_threshold": 0.7        # Similarity threshold for merging
     },
     "storage": {
         "store_embeddings": False,
