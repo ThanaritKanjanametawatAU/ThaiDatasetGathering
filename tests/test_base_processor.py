@@ -55,6 +55,7 @@ class TestBaseProcessor(unittest.TestCase):
         """Test validate_sample with valid sample."""
         sample = {
             "ID": "S1",
+            "speaker_id": "SPK_00001",
             "Language": "th",
             "audio": {"path": "test.wav", "bytes": b'test'},
             "transcript": "test",
