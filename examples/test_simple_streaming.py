@@ -15,9 +15,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 
 # Check if we can import everything
 try:
-    from main import main, process_streaming_mode
-    from utils.streaming import StreamingUploader, StreamingBatchProcessor
-    from processors.gigaspeech2 import GigaSpeech2Processor
+    from main import main
     print("✓ All imports successful")
 except Exception as e:
     print(f"✗ Import error: {e}")
