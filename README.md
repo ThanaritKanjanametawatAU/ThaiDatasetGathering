@@ -102,7 +102,7 @@ python main.py --fresh --all
 python main.py --fresh GigaSpeech2 ProcessedVoiceTH
 
 # Append MozillaCV dataset to existing dataset
-python main.py --append MozillaCV
+python main.py --append MozillaCommonVoice
 
 # Resume processing from latest checkpoint
 python main.py --fresh --all --resume
@@ -298,6 +298,44 @@ class NewDatasetProcessor(BaseProcessor):
 
     def estimate_size(self):
         # Estimate dataset size
+```
+
+## Code Quality & Best Practices
+
+This project follows clean code principles and ML pipeline best practices:
+
+### Code Organization
+- **Modular Design**: Each dataset processor inherits from `BaseProcessor` with common functionality
+- **Separation of Concerns**: Clear separation between data processing, audio handling, and HuggingFace integration
+- **DRY Principle**: Common streaming processing logic has been extracted to `BaseProcessor._process_split_streaming_generic()`
+- **Type Hints**: Comprehensive type annotations throughout the codebase
+
+### Testing
+- Run all tests: `python -m unittest discover`
+- Test specific modules: `python -m unittest tests.test_module_name`
+- Always test after making changes with: 
+  ```bash
+  python main.py --fresh --all --sample --sample-size 5 --enable-speaker-id --enable-stt --streaming
+  ```
+
+### Development Guidelines
+1. **Follow PEP 8**: Use `flake8` for linting (`flake8 . --max-line-length=120`)
+2. **Write Tests**: Add tests for new functionality in the `tests/` directory
+3. **Document Changes**: Update documentation when adding features
+4. **Use Version Control**: Commit logical units of work with clear messages
+
+### Directory Structure
+```
+ThaiDatasetGathering/
+├── main.py                    # Entry point
+├── config.py                  # Configuration
+├── processors/                # Dataset processors
+├── utils/                     # Utility modules
+├── tests/                     # Test suite
+├── examples/                  # Example scripts
+├── scripts/                   # Utility scripts
+├── docs/                      # Documentation
+└── plan/                      # Project planning
 ```
 
 ## License

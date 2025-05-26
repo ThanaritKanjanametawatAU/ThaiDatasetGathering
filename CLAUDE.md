@@ -18,14 +18,20 @@ You can Check the pushed dataset on https://huggingface.co/datasets/Thanarit/Tha
 
 ## Recent Updates (January 2025)
 
+### Code Cleanup and Refactoring (January 26, 2025)
+- **Major Code Cleanup**: Following Power of 10 rules and ML pipeline best practices
+- **Reduced Code Duplication**: Extracted common streaming logic to `BaseProcessor._process_split_streaming_generic()`
+- **Improved File Organization**: Moved test files to tests/ directory, created scripts/ directory
+- **Fixed All Linting Issues**: ~100 issues resolved across the codebase
+- **Enhanced Documentation**: Added code quality section to README, created CHANGELOG.md
+- **Test Suite Updates**: Fixed failing tests, ensured all tests pass before deployment
+
 ### Custom HuggingFace Repository Support
 - Added `--hf-repo` command-line flag to specify custom target repository
 - Allows pushing datasets to any HuggingFace repository you have access to
 - Defaults to `Thanarit/Thai-Voice` if not specified
 - Works with both cached and streaming modes
 - Supports append mode to custom repositories
-
-## Recent Updates (January 2025)
 
 ### GigaSpeech2 Native Transcript Support
 - Implemented native TSV transcript loading from GigaSpeech2's `text` column
