@@ -30,6 +30,8 @@ A modular system to gather Thai audio data from multiple sources and combine the
   - AgglomerativeClustering for small batches (<50 samples) for better accuracy
   - HDBSCAN for larger batches with configurable parameters
   - Persistent speaker models across processing runs
+  - **Dataset-Separated Speaker IDs**: Each dataset's speakers are clustered independently to prevent cross-dataset merging
+  - Supports fresh mode (`--fresh`) to reset speaker IDs
 
 ## Data Sources
 

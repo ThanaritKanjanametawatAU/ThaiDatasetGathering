@@ -97,6 +97,11 @@ The project has been updated to use HuggingFace's native audio format for better
   - `--fresh` flag now resets speaker ID counter to 1 instead of continuing from saved state
   - Deletes existing speaker model file when fresh mode is enabled
   - Ensures clean start for new dataset collections
+- **Dataset Separation (January 27, 2025)**:
+  - Speaker identification now processes each dataset independently
+  - Prevents cross-dataset speaker merging by resetting clustering state between datasets
+  - Each dataset maintains its own speaker clusters while keeping globally unique IDs
+  - Added `reset_for_new_dataset()` method to SpeakerIdentification class
 
 ## Architecture
 
