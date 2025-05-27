@@ -402,10 +402,10 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
             
             # Reset clustering state for new dataset to prevent cross-dataset speaker merging
             if speaker_identifier:
-                # Clear existing clusters and centroids but keep the counter for unique IDs
-                speaker_identifier.existing_clusters = {}
-                speaker_identifier.cluster_centroids = None
-                logger.info(f"Reset speaker clustering state for {dataset_name}, counter at: {speaker_identifier.speaker_counter}")
+                # Reset clustering state but keep counter for globally unique IDs
+                # This ensures speakers from different datasets won't be merged
+                speaker_identifier.reset_for_new_dataset(reset_counter=False)
+                logger.info(f"Reset clustering for {dataset_name}, continuing from speaker ID: SPK_{speaker_identifier.speaker_counter:05d}")
             
             # Create processor config
             processor_config = {
@@ -644,7 +644,7 @@ def main() -> int:
     if args.enable_speaker_id:
         from processors.speaker_identification import SpeakerIdentification
         
-        logger.info("Applying speaker identification to combined dataset")
+        logger.info("Applying speaker identification per dataset to ensure separation")
         
         speaker_config = {
             'model': args.speaker_model,
@@ -665,16 +665,34 @@ def main() -> int:
         
         speaker_identifier = SpeakerIdentification(speaker_config)
         
-        # Process in batches
-        for i in range(0, len(combined_samples), args.speaker_batch_size):
-            batch = combined_samples[i:i + args.speaker_batch_size]
-            logger.info(f"Processing speaker identification batch {i//args.speaker_batch_size + 1}")
+        # Process speaker identification PER DATASET to ensure no cross-dataset clustering
+        dataset_start_idx = 0
+        for dataset_name, samples in processed_datasets.items():
+            logger.info(f"Processing speaker identification for {dataset_name}")
             
-            speaker_ids = speaker_identifier.process_batch(batch)
+            # Reset speaker identification for each dataset
+            speaker_identifier.reset_for_new_dataset(reset_counter=False)
             
-            # Assign speaker IDs
-            for sample, speaker_id in zip(batch, speaker_ids):
-                sample['speaker_id'] = speaker_id
+            # Find samples from this dataset in combined_samples
+            dataset_samples = []
+            dataset_indices = []
+            for idx, sample in enumerate(combined_samples[dataset_start_idx:dataset_start_idx + len(samples)]):
+                dataset_samples.append(sample)
+                dataset_indices.append(dataset_start_idx + idx)
+            
+            # Process in batches for this dataset
+            for i in range(0, len(dataset_samples), args.speaker_batch_size):
+                batch = dataset_samples[i:i + args.speaker_batch_size]
+                batch_indices = dataset_indices[i:i + args.speaker_batch_size]
+                logger.info(f"Processing {dataset_name} speaker batch {i//args.speaker_batch_size + 1}")
+                
+                speaker_ids = speaker_identifier.process_batch(batch)
+                
+                # Assign speaker IDs
+                for idx, speaker_id in zip(batch_indices, speaker_ids):
+                    combined_samples[idx]['speaker_id'] = speaker_id
+            
+            dataset_start_idx += len(samples)
         
         speaker_identifier.cleanup()
     else:

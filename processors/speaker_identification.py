@@ -76,6 +76,27 @@ class SpeakerIdentification:
         # Load existing model if available
         self.load_model()
     
+    def reset_for_new_dataset(self, reset_counter: bool = True):
+        """Reset speaker identification state for a new dataset.
+        
+        Args:
+            reset_counter: Whether to reset the speaker counter to 1 (True) 
+                          or keep incrementing for global uniqueness (False)
+        """
+        logger.info(f"Resetting speaker identification for new dataset. "
+                   f"Reset counter: {reset_counter}, current counter: {self.speaker_counter}")
+        
+        # Clear all clustering state
+        self.existing_clusters = {}
+        self.cluster_centroids = None
+        
+        # Optionally reset counter for dataset-local speaker IDs
+        if reset_counter:
+            self.speaker_counter = 1
+        
+        # Don't save the model - we want a fresh start for each dataset
+        # This ensures no cross-dataset contamination
+    
     def extract_embedding(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Extract speaker embedding from audio.
         
