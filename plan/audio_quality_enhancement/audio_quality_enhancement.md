@@ -210,7 +210,15 @@ NOISE_REDUCTION_CONFIG = {
         "preserve_ratio": 0.7,
         "suppress_secondary_speakers": True,
         "vad_aggressiveness": 2,
-        "speaker_suppression_threshold": 0.3
+        # Flexible secondary speaker detection
+        "secondary_detection": {
+            "min_duration": 0.1,  # Detect from 100ms
+            "max_duration": 5.0,  # Up to 5 seconds
+            "speaker_similarity_threshold": 0.7,
+            "suppression_strength": 0.6,  # 60% suppression
+            "confidence_threshold": 0.5,
+            "detection_methods": ["embedding", "vad", "energy"]
+        }
     },
     "aggressive": {
         "denoiser_dry": 0.01,
@@ -218,8 +226,16 @@ NOISE_REDUCTION_CONFIG = {
         "preserve_ratio": 0.5,
         "suppress_secondary_speakers": True,
         "vad_aggressiveness": 3,
-        "speaker_suppression_threshold": 0.5,
-        "remove_overlapping_speech": True
+        # More aggressive settings
+        "secondary_detection": {
+            "min_duration": 0.05,  # Even shorter interruptions
+            "max_duration": 10.0,  # Longer segments
+            "speaker_similarity_threshold": 0.8,  # Stricter matching
+            "suppression_strength": 0.9,  # 90% suppression
+            "confidence_threshold": 0.3,  # Act on lower confidence
+            "detection_methods": ["embedding", "vad", "energy", "spectral"],
+            "remove_if_confidence_above": 0.8  # Complete removal
+        }
     }
 }
 ```
@@ -604,6 +620,13 @@ class MetricsTracker:
    
    # Process specific dataset with aggressive noise reduction
    python main.py --fresh GigaSpeech2 --enable-noise-reduction --noise-reduction-level aggressive
+   
+   # Configure flexible secondary speaker detection
+   python main.py --fresh --all --enable-noise-reduction \
+       --secondary-min-duration 0.1 \    # Detect from 100ms
+       --secondary-max-duration 5.0 \    # Up to 5 seconds
+       --speaker-similarity-threshold 0.7 \  # Voice matching threshold
+       --suppression-confidence 0.5      # Min confidence to act
    ```
 
 ### Local Configuration
@@ -675,24 +698,61 @@ python main.py --fresh --sample --sample-size 100 \
 
 ### Approach for Handling Speaker Interjections
 
-1. **Voice Activity Detection (VAD)**:
+1. **Multi-Modal Detection Strategy**:
    ```python
-   # Detect speech segments and identify overlapping regions
-   from pyannote.audio import Pipeline
-   
-   def detect_speaker_overlap(audio, sample_rate):
-       pipeline = Pipeline.from_pretrained("pyannote/voice-activity-detection")
-       vad = pipeline({"waveform": audio, "sample_rate": sample_rate})
-       
-       # Identify regions with multiple speakers
-       overlap_regions = detect_overlaps(vad)
-       return overlap_regions
+   class AdaptiveSecondaryDetection:
+       def __init__(self, config):
+           self.min_duration = config.get("min_secondary_duration", 0.1)  # 100ms
+           self.max_duration = config.get("max_secondary_duration", 5.0)  # 5 seconds
+           self.similarity_threshold = config.get("speaker_similarity_threshold", 0.7)
+           
+       def detect_speaker_overlap(self, audio, sample_rate):
+           # Use multiple detection methods
+           methods_results = {
+               "embedding": self.embedding_based_detection(audio),
+               "vad": self.vad_based_detection(audio, sample_rate),
+               "energy": self.energy_based_detection(audio),
+               "spectral": self.spectral_change_detection(audio)
+           }
+           
+           # Combine results with confidence weighting
+           combined_detections = self.combine_detections(methods_results)
+           return combined_detections
    ```
 
-2. **Speaker Separation Strategy**:
-   - For **moderate** level: Suppress secondary speaker by 50-70%
-   - For **aggressive** level: Completely remove secondary speaker segments
-   - Use energy-based detection for short interjections ("ครับ", "ค่ะ", "อืม")
+2. **Flexible Speaker Separation Strategy**:
+   - **Adaptive Detection**: Not limited to specific words or durations
+   - **Confidence-Based Action**:
+     - High confidence (>0.8): Remove or strongly suppress
+     - Medium confidence (0.5-0.8): Moderate suppression
+     - Low confidence (<0.5): Minimal or no action
+   - **Duration-Aware Processing**:
+     - Short interruptions (0.1-1s): Quick suppression
+     - Longer segments (1-5s): Careful analysis to avoid removing important content
+     - Very long segments (>5s): Flag for manual review
+
+### Key Improvements in Flexible Detection:
+
+1. **Not Word-Specific**:
+   - Detects ANY secondary speaker, not just "ครับ/ค่ะ/อืม"
+   - Works with complete sentences, questions, or comments
+   - Language-agnostic detection methods
+
+2. **Variable Duration Support**:
+   - Configurable from 0.05s to 10s (or more)
+   - Handles brief interjections to full sentences
+   - Adaptive to different interruption patterns
+
+3. **Multi-Method Detection**:
+   - Speaker embedding comparison (voice characteristics)
+   - Energy pattern analysis (volume changes)
+   - Spectral analysis (frequency differences)
+   - Voice activity detection (overlapping speech)
+
+4. **Confidence-Based Processing**:
+   - Acts based on detection confidence, not word matching
+   - Graduated response from light suppression to removal
+   - Reduces false positives
 
 ### Potential Drawbacks of Aggressive Mode:
 
@@ -737,21 +797,76 @@ python main.py --fresh --sample --sample-size 100 \
    - Use **aggressive** only on heavily contaminated samples
    - Always keep original files for comparison
 
-3. **Thai-Specific Interjection Detection**:
+3. **Flexible Secondary Speaker Detection**:
    ```python
-   THAI_INTERJECTIONS = {
-       "ครับ": 0.2-0.5s,  # Male "yes"
-       "ค่ะ": 0.2-0.4s,   # Female "yes"  
-       "คะ": 0.2-0.4s,    # Female particle
-       "อืม": 0.3-0.6s,   # "umm"
-       "เอ่อ": 0.3-0.5s   # "uh"
-   }
+   class SecondarysSpeakerDetector:
+       def __init__(self):
+           # Common interjections as hints, not requirements
+           self.common_interjections = {
+               "ครับ", "ค่ะ", "คะ", "อืม", "เอ่อ", "หืม", "อ้อ", "โอ้"
+           }
+           self.detection_methods = [
+               "speaker_embedding_change",  # Different voice characteristics
+               "energy_pattern_analysis",   # Sudden energy spikes
+               "overlap_detection",         # Simultaneous speech
+               "prosody_discontinuity"      # Interruption in speech flow
+           ]
+       
+       def detect_secondary_speaker(self, audio, main_speaker_profile):
+           """
+           Detect ANY secondary speaker, not just specific words
+           - Duration: 0.1s to 5s (flexible)
+           - Method: Multi-modal detection
+           """
+           detections = []
+           
+           # 1. Speaker embedding comparison
+           segments = self.segment_audio(audio, min_duration=0.1)
+           for segment in segments:
+               embedding = self.extract_embedding(segment)
+               similarity = cosine_similarity(embedding, main_speaker_profile)
+               if similarity < 0.7:  # Different speaker detected
+                   detections.append({
+                       "start": segment.start,
+                       "end": segment.end,
+                       "confidence": 1 - similarity,
+                       "method": "embedding_difference"
+                   })
+           
+           # 2. Energy-based detection for overlaps
+           overlap_regions = self.detect_energy_anomalies(audio)
+           
+           # 3. Voice activity detection for multiple speakers
+           vad_overlaps = self.detect_simultaneous_speech(audio)
+           
+           return self.merge_detections(detections, overlap_regions, vad_overlaps)
    ```
 
-4. **Processing Pipeline**:
-   - Detect voice activity regions
-   - Identify potential secondary speaker segments
-   - Apply targeted suppression or removal
+4. **Advanced Detection Methods**:
+   ```python
+   def embedding_based_detection(self, audio, main_speaker_profile):
+       """Detect different speakers using voice embeddings"""
+       # Works for ANY speech, not just specific words
+       
+   def energy_based_detection(self, audio):
+       """Detect sudden energy changes indicating interruptions"""
+       # Catches quick interjections, laughs, coughs, etc.
+       
+   def spectral_change_detection(self, audio):
+       """Detect spectral discontinuities"""
+       # Identifies when different voice overlaps main speaker
+       
+   def prosody_based_detection(self, audio):
+       """Detect interruptions in speech flow"""
+       # Catches natural speech breaks vs interruptions
+   ```
+
+5. **Processing Pipeline**:
+   - Profile main speaker from first few seconds
+   - Continuously monitor for voice changes
+   - Apply detection methods in parallel
+   - Combine results with confidence scoring
+   - Apply suppression based on confidence and duration
    - Smooth transitions to avoid artifacts
 
 ## 9. Smart Adaptive Processing Implementation
