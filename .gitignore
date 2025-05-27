@@ -187,3 +187,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# User-specific scripts
+main.sh

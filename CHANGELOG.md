@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Best practices section following ML pipeline guidelines
 - `scripts/` directory for utility scripts
 - This CHANGELOG.md file
+- Dataset-separated speaker identification to prevent cross-dataset speaker merging
+- `reset_for_new_dataset()` method in SpeakerIdentification class
 
 ### Changed
 - Refactored duplicate split processing methods across processors
@@ -23,12 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved code organization and reduced root directory clutter
 - Fixed linting issues (spacing, imports, line lengths)
 - Removed unused imports and dead code
+- Speaker identification now processes each dataset independently in both cached and streaming modes
+- Main.py now resets speaker clustering state between datasets to ensure proper separation
 
 ### Fixed
 - Fixed missing double blank lines between functions (PEP 8)
 - Fixed long lines exceeding 120 characters
 - Fixed unused variable `sample_archives` in main.py
 - Fixed whitespace issues in example scripts
+- Fixed cross-dataset speaker merging issue where speakers from different datasets were incorrectly grouped together
 
 ## [2.0.0] - 2025-01-26
 
