@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Quality Enhancement Plan - SparkVoice</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="main-header">
+        <div class="container">
+            <nav class="navbar">
+                <div class="logo">
+                    <i class="fas fa-wave-square"></i>
+                    <span>SparkVoice Enhancement</span>
+                </div>
+                <div class="nav-links">
+                    <a href="#overview">Overview</a>
+                    <a href="#features">Features</a>
+                    <a href="#architecture">Architecture</a>
+                    <a href="#implementation">Implementation</a>
+                    <a href="#metrics">Metrics</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1 class="hero-title">Audio Quality Enhancement</h1>
+            <p class="hero-subtitle">Transform 10+ million Thai audio files with AI-powered noise reduction and voice clarity enhancement</p>
+            <div class="hero-stats">
+                <div class="stat">
+                    <i class="fas fa-microphone"></i>
+                    <h3>10M+</h3>
+                    <p>Audio Files</p>
+                </div>
+                <div class="stat">
+                    <i class="fas fa-bolt"></i>
+                    <h3>&lt;0.8s</h3>
+                    <p>Per File</p>
+                </div>
+                <div class="stat">
+                    <i class="fas fa-chart-line"></i>
+                    <h3>20dB</h3>
+                    <p>SNR Improvement</p>
+                </div>
+                <div class="stat">
+                    <i class="fas fa-check-circle"></i>
+                    <h3>99.9%</h3>
+                    <p>Accuracy</p>
+                </div>
+            </div>
+        </div>
+        <div class="hero-animation">
+            <div class="waveform-container">
+                <canvas id="waveform"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- Overview Section -->
+    <section id="overview" class="section overview">
+        <div class="container">
+            <h2 class="section-title">Project Overview</h2>
+            <div class="overview-grid">
+                <div class="overview-card">
+                    <div class="card-icon">
+                        <i class="fas fa-volume-down"></i>
+                    </div>
+                    <h3>Noise Reduction</h3>
+                    <p>Advanced AI-powered noise suppression removing wind, voices, and electronic hum while preserving voice quality</p>
+                </div>
+                <div class="overview-card">
+                    <div class="card-icon">
+                        <i class="fas fa-user-voice"></i>
+                    </div>
+                    <h3>Voice Enhancement</h3>
+                    <p>Intelligent voice clarity improvement with frequency optimization and echo removal</p>
+                </div>
+                <div class="overview-card">
+                    <div class="card-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <h3>Speaker Separation</h3>
+                    <p>Automatic detection and suppression of secondary speaker interjections in Thai</p>
+                </div>
+                <div class="overview-card">
+                    <div class="card-icon">
+                        <i class="fas fa-tachometer-alt"></i>
+                    </div>
+                    <h3>GPU Acceleration</h3>
+                    <p>Optimized for NVIDIA RTX 5090 with <0.8s processing time per file</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="section features">
+        <div class="container">
+            <h2 class="section-title">Key Features</h2>
+            <div class="features-showcase">
+                <div class="feature-item">
+                    <div class="feature-visual">
+                        <div class="adaptive-demo">
+                            <div class="noise-levels">
+                                <div class="level clean">Clean</div>
+                                <div class="level mild">Mild</div>
+                                <div class="level moderate">Moderate</div>
+                                <div class="level heavy">Heavy</div>
+                            </div>
+                            <div class="processing-flow">
+                                <i class="fas fa-arrow-right"></i>
+                            </div>
+                            <div class="processing-levels">
+                                <div class="level skip">Skip</div>
+                                <div class="level gentle">Gentle</div>
+                                <div class="level standard">Standard</div>
+                                <div class="level aggressive">Aggressive</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="feature-content">
+                        <h3>Smart Adaptive Processing</h3>
+                        <p>Two-pass system automatically adjusts processing intensity based on noise levels, saving time on clean files</p>
+                        <ul>
+                            <li>Quick assessment pass (0.1s)</li>
+                            <li>Targeted enhancement only where needed</li>
+                            <li>Automatic mode selection</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="feature-item reverse">
+                    <div class="feature-visual">
+                        <div class="progressive-demo">
+                            <div class="enhancement-stages">
+                                <div class="stage" data-level="1">
+                                    <span>Start Gentle</span>
+                                    <div class="progress-bar" style="width: 30%"></div>
+                                </div>
+                                <div class="stage" data-level="2">
+                                    <span>Check Quality</span>
+                                    <div class="progress-bar" style="width: 60%"></div>
+                                </div>
+                                <div class="stage" data-level="3">
+                                    <span>Enhance More</span>
+                                    <div class="progress-bar" style="width: 100%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="feature-content">
+                        <h3>Progressive Enhancement</h3>
+                        <p>Gradual enhancement approach ensures optimal quality without over-processing</p>
+                        <ul>
+                            <li>Starts with mild enhancement</li>
+                            <li>Monitors quality metrics in real-time</li>
+                            <li>Increases intensity only if needed</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="feature-item">
+                    <div class="feature-visual">
+                        <div class="dashboard-preview">
+                            <div class="mini-dashboard">
+                                <div class="metric-row">
+                                    <span>Progress</span>
+                                    <div class="mini-progress"></div>
+                                    <span>75%</span>
+                                </div>
+                                <div class="metric-row">
+                                    <span>SNR Avg</span>
+                                    <div class="mini-bar good"></div>
+                                    <span>25dB</span>
+                                </div>
+                                <div class="metric-row">
+                                    <span>Quality</span>
+                                    <div class="mini-bar excellent"></div>
+                                    <span>4.2/5</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="feature-content">
+                        <h3>Real-Time Dashboard</h3>
+                        <p>Live monitoring of enhancement progress and quality metrics</p>
+                        <ul>
+                            <li>Processing speed and ETA</li>
+                            <li>Quality distribution charts</li>
+                            <li>Before/after comparisons</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section id="architecture" class="section architecture">
+        <div class="container">
+            <h2 class="section-title">Technical Architecture</h2>
+            <div class="architecture-diagram">
+                <div class="arch-layer input">
+                    <h4>Input Layer</h4>
+                    <div class="components">
+                        <div class="component">Raw Audio Files</div>
+                        <div class="component">10M+ Thai Samples</div>
+                        <div class="component">Multiple Formats</div>
+                    </div>
+                </div>
+                
+                <div class="arch-flow down"><i class="fas fa-arrow-down"></i></div>
+                
+                <div class="arch-layer processing">
+                    <h4>Processing Pipeline</h4>
+                    <div class="pipeline-stages">
+                        <div class="stage">
+                            <i class="fas fa-search"></i>
+                            <span>Quick Assessment</span>
+                        </div>
+                        <div class="stage">
+                            <i class="fas fa-filter"></i>
+                            <span>Noise Reduction</span>
+                        </div>
+                        <div class="stage">
+                            <i class="fas fa-magic"></i>
+                            <span>Enhancement</span>
+                        </div>
+                        <div class="stage">
+                            <i class="fas fa-users"></i>
+                            <span>Speaker Separation</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="arch-flow down"><i class="fas fa-arrow-down"></i></div>
+                
+                <div class="arch-layer models">
+                    <h4>AI Models</h4>
+                    <div class="model-grid">
+                        <div class="model primary">
+                            <i class="fab fa-facebook"></i>
+                            <span>Facebook Denoiser</span>
+                            <small>Primary Engine</small>
+                        </div>
+                        <div class="model">
+                            <i class="fas fa-wave-square"></i>
+                            <span>Spectral Gating</span>
+                            <small>CPU Fallback</small>
+                        </div>
+                        <div class="model">
+                            <i class="fas fa-cut"></i>
+                            <span>SepFormer</span>
+                            <small>Speaker Separation</small>
+                        </div>
+                        <div class="model">
+                            <i class="fas fa-microphone-alt"></i>
+                            <span>Pyannote VAD</span>
+                            <small>Voice Detection</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="arch-flow down"><i class="fas fa-arrow-down"></i></div>
+                
+                <div class="arch-layer output">
+                    <h4>Output & Analysis</h4>
+                    <div class="components">
+                        <div class="component">Enhanced Audio</div>
+                        <div class="component">Quality Metrics</div>
+                        <div class="component">Comparison Reports</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Implementation Timeline -->
+    <section id="implementation" class="section implementation">
+        <div class="container">
+            <h2 class="section-title">Implementation Timeline</h2>
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="timeline-marker">1</div>
+                    <div class="timeline-content">
+                        <h3>Week 1: Core Infrastructure</h3>
+                        <p>Test framework setup, base audio processor, quality metrics implementation</p>
+                        <div class="timeline-tasks">
+                            <div class="task done"><i class="fas fa-check"></i> Test framework</div>
+                            <div class="task done"><i class="fas fa-check"></i> Audio processor base</div>
+                            <div class="task done"><i class="fas fa-check"></i> Metrics system</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="timeline-item">
+                    <div class="timeline-marker">2</div>
+                    <div class="timeline-content">
+                        <h3>Week 2: Noise Reduction</h3>
+                        <p>Facebook Denoiser integration, GPU optimization, progressive enhancement</p>
+                        <div class="timeline-tasks">
+                            <div class="task"><i class="fas fa-clock"></i> Denoiser integration</div>
+                            <div class="task"><i class="fas fa-clock"></i> GPU pipeline</div>
+                            <div class="task"><i class="fas fa-clock"></i> Enhancement logic</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="timeline-item">
+                    <div class="timeline-marker">3</div>
+                    <div class="timeline-content">
+                        <h3>Week 3: Advanced Features</h3>
+                        <p>Speaker separation, Thai interjection detection, adaptive processing</p>
+                        <div class="timeline-tasks">
+                            <div class="task"><i class="fas fa-clock"></i> Speaker separation</div>
+                            <div class="task"><i class="fas fa-clock"></i> Thai detection</div>
+                            <div class="task"><i class="fas fa-clock"></i> Smart adaptation</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="timeline-item">
+                    <div class="timeline-marker">4</div>
+                    <div class="timeline-content">
+                        <h3>Week 4: Polish & Deploy</h3>
+                        <p>Dashboard implementation, performance optimization, final testing</p>
+                        <div class="timeline-tasks">
+                            <div class="task"><i class="fas fa-clock"></i> Real-time dashboard</div>
+                            <div class="task"><i class="fas fa-clock"></i> Performance tuning</div>
+                            <div class="task"><i class="fas fa-clock"></i> Integration tests</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Metrics Section -->
+    <section id="metrics" class="section metrics">
+        <div class="container">
+            <h2 class="section-title">Quality Metrics</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-icon">
+                        <i class="fas fa-signal"></i>
+                    </div>
+                    <h3>SNR (Signal-to-Noise Ratio)</h3>
+                    <div class="metric-value">20-25 dB</div>
+                    <p>Target improvement in signal clarity</p>
+                    <div class="metric-chart">
+                        <canvas id="snr-chart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-icon">
+                        <i class="fas fa-star"></i>
+                    </div>
+                    <h3>PESQ Score</h3>
+                    <div class="metric-value">3.5-4.0</div>
+                    <p>Perceptual quality evaluation</p>
+                    <div class="metric-chart">
+                        <canvas id="pesq-chart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-icon">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <h3>STOI Index</h3>
+                    <div class="metric-value">0.85-0.95</div>
+                    <p>Speech intelligibility measurement</p>
+                    <div class="metric-chart">
+                        <canvas id="stoi-chart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-icon">
+                        <i class="fas fa-brain"></i>
+                    </div>
+                    <h3>DNSMOS Score</h3>
+                    <div class="metric-value">4.0-4.5</div>
+                    <p>Deep learning quality assessment</p>
+                    <div class="metric-chart">
+                        <canvas id="dnsmos-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Before/After Comparison -->
+    <section class="section comparison">
+        <div class="container">
+            <h2 class="section-title">Before & After Comparison</h2>
+            <div class="comparison-demo">
+                <div class="audio-comparison">
+                    <div class="before">
+                        <h4>Before Enhancement</h4>
+                        <div class="audio-visualizer" id="before-viz">
+                            <canvas></canvas>
+                        </div>
+                        <div class="audio-stats">
+                            <div class="stat-item">
+                                <span>SNR:</span>
+                                <span class="value bad">12 dB</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>Quality:</span>
+                                <span class="value bad">2.8/5</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>Noise:</span>
+                                <span class="value bad">High</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="comparison-arrow">
+                        <i class="fas fa-arrow-right"></i>
+                    </div>
+                    
+                    <div class="after">
+                        <h4>After Enhancement</h4>
+                        <div class="audio-visualizer" id="after-viz">
+                            <canvas></canvas>
+                        </div>
+                        <div class="audio-stats">
+                            <div class="stat-item">
+                                <span>SNR:</span>
+                                <span class="value good">32 dB</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>Quality:</span>
+                                <span class="value good">4.5/5</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>Noise:</span>
+                                <span class="value good">Minimal</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Command Usage -->
+    <section class="section usage">
+        <div class="container">
+            <h2 class="section-title">Usage Examples</h2>
+            <div class="code-examples">
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Basic Enhancement</span>
+                        <button class="copy-btn" onclick="copyCode(this)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                    <pre><code>python main.py --fresh --all --enable-noise-reduction</code></pre>
+                </div>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>With Thai Interjection Suppression</span>
+                        <button class="copy-btn" onclick="copyCode(this)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                    <pre><code>python main.py --fresh --all --enable-noise-reduction \
+    --suppression-mode moderate \
+    --suppression-words "ครับ,ค่ะ,อืม,เอ่อ"</code></pre>
+                </div>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Full Feature Set</span>
+                        <button class="copy-btn" onclick="copyCode(this)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                    <pre><code>python main.py --fresh --all --streaming \
+    --enable-noise-reduction \
+    --enable-speaker-id \
+    --enable-stt \
+    --dashboard \
+    --save-comparison</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-info">
+                    <h3>SparkVoice Audio Enhancement</h3>
+                    <p>Advanced audio quality improvement for Thai speech datasets</p>
+                </div>
+                <div class="footer-links">
+                    <a href="#overview">Overview</a>
+                    <a href="#features">Features</a>
+                    <a href="#architecture">Architecture</a>
+                    <a href="#metrics">Metrics</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 SparkVoice. Built for ML training excellence.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
