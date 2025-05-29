@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Enhancement Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 Audio Enhancement Dashboard</h1>
+            <div class="status-bar">
+                <span id="connection-status" class="status-indicator">● Connected</span>
+                <span id="last-update">Last update: --</span>
+            </div>
+        </header>
+
+        <main>
+            <!-- Progress Section -->
+            <section class="progress-section">
+                <h2>Processing Progress</h2>
+                <div class="progress-container">
+                    <div class="progress-info">
+                        <span id="processed-count">0</span> / <span id="total-count">0</span> files
+                        (<span id="progress-percentage">0</span>%)
+                    </div>
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <div class="time-info">
+                        <div class="time-item">
+                            <span class="label">Elapsed:</span>
+                            <span id="elapsed-time">--</span>
+                        </div>
+                        <div class="time-item">
+                            <span class="label">ETA:</span>
+                            <span id="eta-time">--</span>
+                        </div>
+                        <div class="time-item">
+                            <span class="label">Speed:</span>
+                            <span id="processing-speed">-- files/min</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Metrics Section -->
+            <section class="metrics-section">
+                <h2>Quality Metrics</h2>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h3>SNR Improvement</h3>
+                        <div class="metric-value">
+                            <span id="snr-improvement">--</span> dB
+                        </div>
+                        <canvas id="snr-chart"></canvas>
+                    </div>
+                    <div class="metric-card">
+                        <h3>PESQ Score</h3>
+                        <div class="metric-value">
+                            <span id="pesq-score">--</span> / 4.5
+                        </div>
+                        <canvas id="pesq-chart"></canvas>
+                    </div>
+                    <div class="metric-card">
+                        <h3>STOI Score</h3>
+                        <div class="metric-value">
+                            <span id="stoi-score">--</span> / 1.0
+                        </div>
+                        <canvas id="stoi-chart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- System Performance -->
+            <section class="performance-section">
+                <h2>System Performance</h2>
+                <div class="performance-grid">
+                    <div class="performance-card">
+                        <h3>GPU Usage</h3>
+                        <div class="gauge-container">
+                            <canvas id="gpu-gauge"></canvas>
+                        </div>
+                        <div class="performance-details">
+                            <div>Memory: <span id="gpu-memory">--%</span></div>
+                            <div>Temperature: <span id="gpu-temp">--°C</span></div>
+                        </div>
+                    </div>
+                    <div class="performance-card">
+                        <h3>Processing Stats</h3>
+                        <div class="stats-list">
+                            <div class="stat-item">
+                                <span class="stat-label">Success Rate:</span>
+                                <span id="success-rate" class="stat-value">--%</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Failed Files:</span>
+                                <span id="failed-count" class="stat-value">--</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Low Quality:</span>
+                                <span id="low-quality-count" class="stat-value">--</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Quality Trend:</span>
+                                <span id="quality-trend" class="stat-value">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Configuration Section -->
+            <section class="config-section">
+                <h2>Configuration</h2>
+                <div class="config-controls">
+                    <div class="config-item">
+                        <label for="noise-level">Noise Reduction Level:</label>
+                        <select id="noise-level">
+                            <option value="mild">Mild</option>
+                            <option value="moderate" selected>Moderate</option>
+                            <option value="aggressive">Aggressive</option>
+                        </select>
+                    </div>
+                    <div class="config-item">
+                        <label for="batch-size">Batch Size:</label>
+                        <input type="number" id="batch-size" value="32" min="1" max="128">
+                    </div>
+                    <div class="config-item">
+                        <label for="adaptive-mode">
+                            <input type="checkbox" id="adaptive-mode" checked>
+                            Adaptive Mode
+                        </label>
+                    </div>
+                    <div class="config-item">
+                        <label for="skip-clean">
+                            <input type="checkbox" id="skip-clean" checked>
+                            Skip Clean Audio
+                        </label>
+                    </div>
+                    <button id="apply-config" class="btn btn-primary">Apply Changes</button>
+                </div>
+            </section>
+
+            <!-- Recent Comparisons -->
+            <section class="comparisons-section">
+                <h2>Recent Comparisons</h2>
+                <div id="comparison-gallery" class="comparison-gallery">
+                    <!-- Comparison images will be inserted here -->
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Audio Enhancement Dashboard v1.0 | © 2025 Thai Audio Dataset Collection Project</p>
+        </footer>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>

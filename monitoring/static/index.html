@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Enhancement Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <h1>Audio Enhancement Dashboard</h1>
+            <div class="status-indicator">
+                <span id="connection-status" class="status-dot offline"></span>
+                <span id="connection-text">Offline</span>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <div class="dashboard-grid">
+            
+            <!-- Processing Progress -->
+            <section class="card progress-card">
+                <h2>Processing Progress</h2>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <span id="progress-text" class="progress-text">0%</span>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat">
+                        <span class="stat-label">Total Files</span>
+                        <span id="total-files" class="stat-value">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Processed</span>
+                        <span id="processed-files" class="stat-value">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Success</span>
+                        <span id="success-files" class="stat-value success">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Failed</span>
+                        <span id="failed-files" class="stat-value error">0</span>
+                    </div>
+                </div>
+                
+                <div class="performance-metrics">
+                    <div class="metric">
+                        <i class="icon-speed"></i>
+                        <span id="processing-speed">0</span> files/min
+                    </div>
+                    <div class="metric">
+                        <i class="icon-time"></i>
+                        ETA: <span id="eta">--:--:--</span>
+                    </div>
+                </div>
+                
+                <div class="current-file">
+                    <span class="label">Current:</span>
+                    <span id="current-file-name">-</span>
+                </div>
+            </section>
+
+            <!-- System Resources -->
+            <section class="card resources-card">
+                <h2>System Resources</h2>
+                
+                <div class="resource-item">
+                    <span class="resource-label">CPU Usage</span>
+                    <div class="resource-bar">
+                        <div id="cpu-bar" class="resource-fill cpu" style="width: 0%"></div>
+                    </div>
+                    <span id="cpu-value" class="resource-value">0%</span>
+                </div>
+                
+                <div class="resource-item">
+                    <span class="resource-label">Memory</span>
+                    <div class="resource-bar">
+                        <div id="memory-bar" class="resource-fill memory" style="width: 0%"></div>
+                    </div>
+                    <span id="memory-value" class="resource-value">0%</span>
+                </div>
+                
+                <div class="resource-item">
+                    <span class="resource-label">GPU Usage</span>
+                    <div class="resource-bar">
+                        <div id="gpu-bar" class="resource-fill gpu" style="width: 0%"></div>
+                    </div>
+                    <span id="gpu-value" class="resource-value">0%</span>
+                </div>
+                
+                <div class="resource-item">
+                    <span class="resource-label">GPU Memory</span>
+                    <div class="resource-bar">
+                        <div id="gpu-memory-bar" class="resource-fill gpu-memory" style="width: 0%"></div>
+                    </div>
+                    <span id="gpu-memory-value" class="resource-value">0%</span>
+                </div>
+                
+                <div class="gpu-temp">
+                    <i class="icon-temp"></i>
+                    GPU Temp: <span id="gpu-temp">--</span>°C
+                </div>
+            </section>
+
+            <!-- Quality Metrics -->
+            <section class="card quality-card">
+                <h2>Quality Metrics (Last 1000 files)</h2>
+                
+                <div class="quality-grid">
+                    <div class="quality-metric">
+                        <h3>SNR Improvement</h3>
+                        <div class="metric-value">
+                            <span id="avg-snr" class="large-value">0.0</span>
+                            <span class="unit">dB</span>
+                            <span id="snr-trend" class="trend"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="quality-metric">
+                        <h3>PESQ Score</h3>
+                        <div class="metric-value">
+                            <span id="avg-pesq" class="large-value">0.0</span>
+                            <span id="pesq-trend" class="trend"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="quality-metric">
+                        <h3>STOI Score</h3>
+                        <div class="metric-value">
+                            <span id="avg-stoi" class="large-value">0.0</span>
+                            <span id="stoi-trend" class="trend"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="quality-chart-container">
+                    <canvas id="quality-trend-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- Batch Processing -->
+            <section class="card batch-card">
+                <h2>Batch Processing</h2>
+                
+                <div id="dataset-list" class="dataset-list">
+                    <!-- Dynamically populated -->
+                </div>
+                
+                <div class="batch-summary">
+                    <h3>Batch Summary</h3>
+                    <div class="summary-stats">
+                        <div class="summary-stat">
+                            <span class="label">Total Datasets:</span>
+                            <span id="total-datasets">0</span>
+                        </div>
+                        <div class="summary-stat">
+                            <span class="label">Completed:</span>
+                            <span id="completed-datasets">0</span>
+                        </div>
+                        <div class="summary-stat">
+                            <span class="label">Overall Success Rate:</span>
+                            <span id="overall-success-rate">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Alerts -->
+            <section class="card alerts-card">
+                <h2>Recent Alerts</h2>
+                
+                <div id="alerts-list" class="alerts-list">
+                    <!-- Dynamically populated -->
+                </div>
+                
+                <div class="alert-summary">
+                    <span class="alert-count errors">
+                        <i class="icon-error"></i>
+                        Errors: <span id="error-count">0</span>
+                    </span>
+                    <span class="alert-count warnings">
+                        <i class="icon-warning"></i>
+                        Warnings: <span id="warning-count">0</span>
+                    </span>
+                </div>
+            </section>
+
+            <!-- Before/After Comparison -->
+            <section class="card comparison-card">
+                <h2>Sample Comparisons</h2>
+                
+                <div id="comparison-gallery" class="comparison-gallery">
+                    <!-- Dynamically populated with sample comparisons -->
+                </div>
+                
+                <button id="refresh-comparisons" class="btn-refresh">
+                    <i class="icon-refresh"></i> Refresh Samples
+                </button>
+            </section>
+
+        </div>
+
+        <!-- Footer -->
+        <footer class="dashboard-footer">
+            <div class="footer-actions">
+                <button id="save-report" class="btn btn-primary">
+                    <i class="icon-save"></i> Save Report
+                </button>
+                <button id="export-csv" class="btn btn-secondary">
+                    <i class="icon-export"></i> Export CSV
+                </button>
+                <button id="configure" class="btn btn-secondary">
+                    <i class="icon-settings"></i> Configure
+                </button>
+            </div>
+            
+            <div class="footer-info">
+                Last Update: <span id="last-update">Never</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div id="config-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Enhancement Configuration</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="config-section">
+                    <h3>Presets</h3>
+                    <div class="preset-buttons">
+                        <button class="preset-btn" data-preset="conservative">Conservative</button>
+                        <button class="preset-btn" data-preset="balanced">Balanced</button>
+                        <button class="preset-btn" data-preset="aggressive">Aggressive</button>
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <h3>Enhancement Settings</h3>
+                    <div class="config-item">
+                        <label for="enhancement-level">Enhancement Level</label>
+                        <input type="range" id="enhancement-level" min="0" max="1" step="0.1" value="0.5">
+                        <span id="enhancement-level-value">0.5</span>
+                    </div>
+                    
+                    <div class="config-item">
+                        <label for="noise-reduction">Noise Reduction</label>
+                        <input type="range" id="noise-reduction" min="0" max="1" step="0.1" value="0.7">
+                        <span id="noise-reduction-value">0.7</span>
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <h3>Processing Settings</h3>
+                    <div class="config-item">
+                        <label for="batch-size">Batch Size</label>
+                        <input type="number" id="batch-size" min="1" max="128" value="32">
+                    </div>
+                    
+                    <div class="config-item">
+                        <label for="gpu-memory">GPU Memory Fraction</label>
+                        <input type="range" id="gpu-memory" min="0.1" max="1" step="0.1" value="0.8">
+                        <span id="gpu-memory-value">0.8</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button id="save-config" class="btn btn-primary">Save Configuration</button>
+                <button id="cancel-config" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
