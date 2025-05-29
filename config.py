@@ -57,6 +57,7 @@ SCHEMA = {
     "length": float,    # Audio length in seconds
     "dataset_name": str,        # Source dataset name (NEW)
     "confidence_score": float,  # STT confidence score 0.0-1.0 (NEW)
+    "enhancement_metadata": dict,  # Audio enhancement metadata (optional)
 }
 
 # Export TARGET_SCHEMA for compatibility
@@ -107,6 +108,11 @@ VALIDATION_RULES = {
         "required": True,
         "pattern": r"^SPK_\d{5}$",
         "error_message": "Speaker ID must be in format 'SPK_XXXXX' where X is a digit"
+    },
+    "enhancement_metadata": {
+        "required": False,  # Optional field
+        "type": dict,
+        "error_message": "Enhancement metadata must be a dictionary"
     }
 }
 
@@ -193,4 +199,59 @@ SPEAKER_ID_CONFIG = {
         "embedding_format": "hdf5",
         "compression": "gzip"
     }
+}
+
+# Noise Reduction Configuration
+NOISE_REDUCTION_CONFIG = {
+    "enabled": False,  # Default disabled, enable with --enable-noise-reduction
+    "device": "cuda",  # Use GPU if available
+    "adaptive_mode": True,  # Automatically select enhancement level
+    "default_level": "moderate",  # Default level if adaptive mode is off
+    "levels": {
+        "mild": {
+            "dry_wet_ratio": 0.1,
+            "prop_decrease": 0.6,
+            "target_snr": 20
+        },
+        "moderate": {
+            "dry_wet_ratio": 0.05,
+            "prop_decrease": 0.8,
+            "target_snr": 25
+        },
+        "aggressive": {
+            "dry_wet_ratio": 0.02,
+            "prop_decrease": 1.0,
+            "target_snr": 30
+        }
+    },
+    "quality_targets": {
+        "min_snr_improvement": 5,     # Minimum dB improvement
+        "max_snr_improvement": 10,    # Maximum dB improvement
+        "min_pesq": 3.0,              # Minimum PESQ score
+        "min_stoi": 0.85,             # Minimum STOI score
+        "min_speaker_similarity": 0.95 # Minimum speaker preservation
+    },
+    "processing": {
+        "batch_size": 32,             # GPU batch size
+        "max_duration": 300,          # Max audio duration in seconds
+        "clean_threshold_snr": 30,    # Skip if SNR > this value
+        "fallback_to_cpu": True,      # Use CPU if GPU fails
+        "warm_up_model": True,        # Warm up model on init
+        "target_pesq": 3.0,           # Target PESQ score
+        "target_stoi": 0.85          # Target STOI score
+    },
+    "engines": {
+        "primary": "denoiser",        # Facebook Denoiser
+        "fallback": "spectral",       # Spectral gating
+        "denoiser_model": "dns64"     # Denoiser model name
+    },
+    "metadata_fields": [
+        "original_snr",
+        "enhanced_snr", 
+        "snr_improvement",
+        "enhancement_level",
+        "processing_time_ms",
+        "engine_used",
+        "noise_types"
+    ]
 }
