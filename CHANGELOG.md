@@ -1,65 +1,90 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to the Thai Audio Dataset Collection project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-- Generic streaming split processor in `BaseProcessor` to reduce code duplication
-- `get_available_splits()` method in `BaseProcessor` for consistent split detection
-- `_extract_additional_fields()` hook for dataset-specific field extraction
-- Code quality documentation in README.md
-- Best practices section following ML pipeline guidelines
-- `scripts/` directory for utility scripts
-- This CHANGELOG.md file
-- Dataset-separated speaker identification to prevent cross-dataset speaker merging
-- `reset_for_new_dataset()` method in SpeakerIdentification class
+## [2.3.0] - 2025-01-29
 
-### Changed
-- Refactored duplicate split processing methods across processors
-- Moved `test_multi_dataset_resume.py` to `tests/` directory
-- Moved `verify_dataset.py` to `scripts/` directory
-- Improved code organization and reduced root directory clutter
-- Fixed linting issues (spacing, imports, line lengths)
-- Removed unused imports and dead code
-- Speaker identification now processes each dataset independently in both cached and streaming modes
-- Main.py now resets speaker clustering state between datasets to ensure proper separation
+### Added
+- Audio enhancement system with secondary speaker detection and removal
+- Real-time monitoring dashboard for enhancement progress
+- Batch processing for efficient audio enhancement
+- GPU acceleration support with automatic CPU fallback
+- Audio quality metrics (SNR, PESQ, STOI) calculation
+- Configurable enhancement levels (mild, moderate, aggressive)
+- Integration of denoiser and spectral gating engines
 
 ### Fixed
-- Fixed missing double blank lines between functions (PEP 8)
-- Fixed long lines exceeding 120 characters
-- Fixed unused variable `sample_archives` in main.py
-- Fixed whitespace issues in example scripts
-- Fixed cross-dataset speaker merging issue where speakers from different datasets were incorrectly grouped together
-
-## [2.0.0] - 2025-01-26
-
-### Added
-- Improved speaker clustering algorithm with adaptive thresholds
-- Better handling of small batches (<50 samples) using AgglomerativeClustering
-- Dynamic distance threshold based on similarity distribution
+- Speaker ID dataset separation - ProcessedVoiceTH no longer uses SPK_00001 from GigaSpeech2
+- Proper implementation of `reset_for_new_dataset()` between datasets
+- Import errors in audio enhancement modules
+- Module integration issues from parallel development branches
 
 ### Changed
-- Speaker clustering now adjusts parameters based on data characteristics
-- HDBSCAN parameters are dynamically adjusted for better accuracy
+- Updated documentation to reflect audio enhancement features
+- Enhanced CLAUDE.md with verification checklist
+- Updated requirements.txt with enhancement dependencies
 
-## [1.9.0] - 2025-01-25
+## [2.2.0] - 2025-01-26
 
 ### Added
-- Multi-dataset checkpoint system with independent progress tracking
-- Streaming mode append functionality
-- Custom HuggingFace repository support with `--hf-repo` flag
-- Speech-to-Text integration for missing transcripts
-- Speaker identification and clustering across audio samples
+- Adaptive speaker clustering algorithm based on similarity distribution
+- AgglomerativeClustering for small batches (<50 samples)
+- Dynamic distance threshold adjustment for better clustering accuracy
+- Fresh mode support for speaker identification
+
+### Fixed
+- Speaker identification accuracy issues causing poor clustering
+- JSON serialization issue with numpy int64 types
+- AttributeError when cluster_centroids was None
 
 ### Changed
-- Unified checkpoint format with backward compatibility
+- Reverted to original 'pyannote/embedding' model for stability
+- Improved clustering parameters for better speaker separation
+
+## [2.1.0] - 2025-01-25
+
+### Added
+- Speaker identification and clustering system
+- Speaker ID field (SPK_00001, SPK_00002, etc.) to dataset schema
+- Support for both cached and streaming modes
+- Persistent speaker models in checkpoints directory
+- Comprehensive tests for speaker identification
+
+## [2.0.0] - 2025-01-20
+
+### Added
+- Streaming mode for processing datasets without full download
+- Unified checkpoint system v2.0 with backward compatibility
+- Multi-dataset checkpoint support with independent progress tracking
+- Custom HuggingFace repository support with --hf-repo flag
 - Native TSV transcript loading for GigaSpeech2
+- Speech-to-Text (STT) integration for missing transcripts
 - Audio format standardization to HuggingFace native format
 
+### Changed
+- Audio output format to dictionary with array, sampling_rate, and path
+- All audio normalized to -20dB for consistent volume
+- Checkpoint format unified across streaming and cached modes
+
 ### Fixed
-- Streaming mode append now correctly continues from existing shards
+- Streaming mode append functionality
 - STT properly fills empty transcripts when enabled
+
+## [1.0.0] - 2023-05-19
+
+### Added
+- Initial project implementation
+- Support for GigaSpeech2, ProcessedVoiceTH, and Mozilla Common Voice datasets
+- Modular processor architecture
+- HuggingFace integration
+- Audio standardization (16kHz mono)
+- Volume normalization
+- Batch processing with progress tracking
+- Checkpoint system for resumable processing
+- Sample mode for testing
+- Comprehensive test suite

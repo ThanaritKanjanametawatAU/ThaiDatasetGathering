@@ -123,3 +123,8 @@ zipp @ file:///home/conda/feedstock_root/build_artifacts/zipp_1732827521216/work
 pyannote.audio==3.3.2
 h5py==3.14.0
 hdbscan==0.8.39
+flask==3.2.0
+flask-cors==6.2.0
+pesq==0.0.5
+pystoi==0.4.1
+denoiser==0.1.5
