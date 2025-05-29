@@ -102,6 +102,32 @@ The project has been updated to use HuggingFace's native audio format for better
   - Prevents cross-dataset speaker merging by resetting clustering state between datasets
   - Each dataset maintains its own speaker clusters while keeping globally unique IDs
   - Added `reset_for_new_dataset()` method to SpeakerIdentification class
+- **Fixed Dataset Speaker ID Overlap (January 29, 2025)**:
+  - Resolved issue where ProcessedVoiceTH would incorrectly use SPK_00001 from GigaSpeech2
+  - Now properly calls `reset_for_new_dataset(reset_counter=False)` between datasets
+  - Ensures no speaker ID overlap between different datasets while maintaining unique IDs
+
+### Audio Enhancement (January 2025)
+- **Secondary Speaker Detection and Removal**:
+  - Detects overlapping speech and secondary speakers in audio
+  - Uses spectral subtraction to remove secondary speakers
+  - Configurable suppression strength (0.0-1.0)
+- **Noise Reduction**:
+  - Denoiser engine using Facebook's denoiser model
+  - Spectral gating for background noise removal
+  - Adaptive noise profiling for better results
+- **Enhancement Levels**:
+  - Mild: Light noise reduction, preserves audio character
+  - Moderate: Balanced enhancement (default)
+  - Aggressive: Maximum noise removal, may affect voice quality
+- **Real-time Monitoring**:
+  - Live dashboard for tracking enhancement progress
+  - Before/after audio comparison
+  - Metrics visualization (SNR, PESQ, STOI)
+- **Batch Processing**:
+  - Efficient parallel processing of audio samples
+  - GPU acceleration support
+  - Automatic fallback to CPU if GPU unavailable
 
 ## Architecture
 
@@ -137,9 +163,24 @@ The project has been updated to use HuggingFace's native audio format for better
    - `logging.py`: Specialized logging and progress tracking
    - `cache.py`: Caching utilities for efficient data processing
    - `streaming.py`: Streaming mode infrastructure (StreamingUploader, StreamingBatchProcessor)
+   - `audio_metrics.py`: Audio quality metrics calculation (SNR, PESQ, STOI)
+   - `speaker_utils.py`: Speaker processing utilities
 
 5. **STT System** (`processors/stt/`):
    - `ensemble_stt.py`: Ensemble Speech-to-Text processor for missing transcripts
+
+6. **Audio Enhancement System** (`processors/audio_enhancement/`):
+   - `core.py`: Enhancement orchestrator managing all enhancement engines
+   - `detection/secondary_speaker.py`: Secondary speaker detection algorithm
+   - `detection/overlap_detector.py`: Speech overlap detection
+   - `engines/denoiser.py`: Deep learning-based noise reduction
+   - `engines/spectral_gating.py`: Spectral noise gate implementation
+   - `speaker_separation.py`: Speaker separation utilities
+
+7. **Monitoring System** (`monitoring/`):
+   - `dashboard.py`: Real-time web dashboard for enhancement monitoring
+   - `metrics_collector.py`: Collects and aggregates audio quality metrics
+   - `comparison_ui.py`: Before/after audio comparison interface
 
 ### Data Flow
 
@@ -206,6 +247,12 @@ python main.py --fresh --all --enable-speaker-id --speaker-min-cluster-size 5 --
 
 # Full test with all features
 python main.py --fresh --all --sample --sample-size 50 --enable-speaker-id --enable-stt --streaming
+
+# Enable audio enhancement with speaker ID
+python main.py --fresh --all --enable-speaker-id --enable-audio-enhancement --enhancement-level moderate --streaming
+
+# Full test with enhancement and dashboard
+python main.py --fresh GigaSpeech2 ProcessedVoiceTH --sample --sample-size 10 --enable-speaker-id --enable-audio-enhancement --enhancement-dashboard --streaming
 
 # Performance optimization for high-bandwidth connections
 export HF_HUB_ENABLE_HF_TRANSFER=1
@@ -299,7 +346,14 @@ python -m mypy .
 
 ## Quick Verification Checklist
 
-- Always run python main.py --fresh --all --sample --sample-size 5 --enable-speaker-id --enable-stt --streaming to test and check huggingface page when the command finishes every time new feature is implementation to make completely sure that it will work as expected.
+- Always run `python main.py --fresh GigaSpeech2 ProcessedVoiceTH --sample --sample-size 10 --enable-speaker-id --enable-stt --streaming --enable-audio-enhancement` to test and check huggingface page when the command finishes every time new feature is implementation to make completely sure that it will work as expected.
+- Verify that:
+  - S1-S8 and S10 have the same speaker ID (SPK_00001)
+  - S9 has a different speaker ID (SPK_00002)  
+  - ProcessedVoiceTH samples do NOT use SPK_00001 or SPK_00002
+  - No speaker ID overlap between datasets
+  - Audio enhancement removes secondary speakers effectively
+  - Enhancement metrics are properly collected
 ```
 
 </invoke>

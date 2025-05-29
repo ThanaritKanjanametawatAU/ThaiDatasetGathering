@@ -1,5 +1,27 @@
 # Change Log
 
+## 2025-01-29
+
+### Fixed (Speaker ID Dataset Separation)
+- Fixed issue where ProcessedVoiceTH incorrectly used SPK_00001 from GigaSpeech2
+- Properly implemented `reset_for_new_dataset(reset_counter=False)` calls between datasets
+- Now ensures no speaker ID overlap between different datasets
+- Each dataset maintains independent speaker clusters with globally unique IDs
+- Verified S1-S8,S10 correctly get SPK_00001, S9 gets SPK_00002
+- ProcessedVoiceTH now starts from SPK_00007+ (no overlap with GigaSpeech2)
+
+### Added (Audio Enhancement Integration)
+- Integrated secondary speaker detection and removal from parallel development branches
+- Added comprehensive audio enhancement pipeline with:
+  - Secondary speaker detection using spectral analysis
+  - Noise reduction with denoiser and spectral gating
+  - Configurable enhancement levels (mild, moderate, aggressive)
+- Real-time monitoring dashboard for enhancement progress
+- Batch processing support for efficient enhancement
+- GPU acceleration with automatic CPU fallback
+- Audio quality metrics calculation (SNR, PESQ, STOI)
+- Fixed import errors and module integration issues
+
 ## 2025-05-26
 
 ### Fixed (Speaker Identification Improvements)

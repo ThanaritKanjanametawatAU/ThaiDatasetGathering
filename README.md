@@ -32,6 +32,13 @@ A modular system to gather Thai audio data from multiple sources and combine the
   - Persistent speaker models across processing runs
   - **Dataset-Separated Speaker IDs**: Each dataset's speakers are clustered independently to prevent cross-dataset merging
   - Supports fresh mode (`--fresh`) to reset speaker IDs
+- **Audio Enhancement**: Advanced audio quality improvement
+  - Secondary speaker detection and removal
+  - Noise reduction with denoiser and spectral gating
+  - Configurable enhancement levels (mild, moderate, aggressive)
+  - Real-time monitoring dashboard for enhancement progress
+  - Batch processing for efficient enhancement
+  - GPU acceleration support
 
 ## Data Sources
 
@@ -69,7 +76,7 @@ A modular system to gather Thai audio data from multiple sources and combine the
 
 ### Main Command (Test with this ALWAYS)
 ```bash
-python main.py --fresh GigaSpeech2 MozillaCommonVoice  --sample --sample-size 100 --enable-speaker-id --enable-stt --streaming --speaker-min-cluster-size 5 --speaker-min-samples 3 --speaker-epsilon 0.5 --speaker-threshold 0.6
+python main.py --fresh GigaSpeech2 ProcessedVoiceTH --sample --sample-size 10 --enable-speaker-id --enable-stt --streaming --speaker-min-cluster-size 5 --speaker-min-samples 3 --speaker-epsilon 0.5 --speaker-threshold 0.6 --enable-audio-enhancement --enhancement-level moderate
 
 ```
 
@@ -177,6 +184,13 @@ python main.py --append MozillaCV --streaming --hf-repo "myorg/thai-audio-collec
 - `--speaker-epsilon F`: Epsilon for HDBSCAN (default: 0.5)
 - `--store-embeddings`: Store speaker embeddings (increases storage)
 
+**Audio Enhancement Options:**
+- `--enable-audio-enhancement`: Enable audio quality enhancement (noise reduction, clarity improvement)
+- `--enhancement-batch-size N`: Batch size for audio enhancement processing (default: 32)
+- `--enhancement-dashboard`: Enable real-time dashboard for monitoring enhancement progress
+- `--enhancement-level LEVEL`: Enhancement level: mild, moderate, or aggressive (default: moderate)
+- `--enhancement-gpu`: Use GPU for audio enhancement (if available)
+
 **Other Options:**
 - `--output DIR`: Output directory for local dataset
 - `--verbose`: Enable verbose logging
@@ -220,13 +234,38 @@ ThaiDatasetGathering/
 │   ├── __init__.py
 │   ├── audio.py             # Audio processing utilities
 │   ├── logging.py           # Logging utilities
-│   └── huggingface.py       # Huggingface interaction utilities
+│   ├── huggingface.py       # Huggingface interaction utilities
+│   ├── streaming.py         # Streaming mode utilities
+│   ├── cache.py             # Cache management utilities
+│   ├── audio_metrics.py     # Audio quality metrics
+│   └── speaker_utils.py     # Speaker processing utilities
+├── monitoring/              # Real-time monitoring components
+│   ├── __init__.py
+│   ├── dashboard.py         # Enhancement monitoring dashboard
+│   ├── metrics_collector.py # Metrics collection and aggregation
+│   └── comparison_ui.py     # Before/after comparison UI
 ├── processors/
 │   ├── __init__.py
 │   ├── base_processor.py    # Base class for dataset processors
 │   ├── gigaspeech2.py       # GigaSpeech2 processor
 │   ├── processed_voice_th.py # Processed Voice TH processor
-│   └── mozilla_cv.py        # Mozilla Common Voice processor
+│   ├── mozilla_cv.py        # Mozilla Common Voice processor
+│   ├── speaker_identification.py # Speaker ID clustering system
+│   ├── audio_enhancement/   # Audio enhancement modules
+│   │   ├── __init__.py
+│   │   ├── core.py          # Core enhancement orchestrator
+│   │   ├── detection/       # Audio issue detection
+│   │   │   ├── __init__.py
+│   │   │   ├── overlap_detector.py
+│   │   │   └── secondary_speaker.py
+│   │   ├── engines/         # Enhancement engines
+│   │   │   ├── __init__.py
+│   │   │   ├── denoiser.py
+│   │   │   └── spectral_gating.py
+│   │   └── speaker_separation.py
+│   └── stt/                 # Speech-to-text processors
+│       ├── __init__.py
+│       └── ensemble_stt.py
 ├── tests/
 │   ├── __init__.py
 │   ├── test_audio.py        # Tests for audio utilities

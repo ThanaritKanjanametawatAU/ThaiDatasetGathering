@@ -190,3 +190,20 @@ venv.bak/
 
 # User-specific scripts
 main.sh
+
+# Debug and analysis scripts (temporary)
+debug_*.py
+analyze_*.py
+check_*.py
+verify_*.py
+test_enhancement.sh
+test_final_verification.sh
+
+# Enhancement metrics
+enhancement_metrics/
+
+# Image files
+*.png
+*.jpg
+*.jpeg
+image.png
