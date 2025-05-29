@@ -1,8 +1,33 @@
 """
 Audio Enhancement Module
-Provides noise reduction and voice clarity enhancement for audio processing.
+
+Provides audio quality enhancement capabilities including noise reduction,
+voice enhancement, audio restoration, and speaker separation.
 """
 
+# Core enhancement
 from .core import AudioEnhancer
 
-__all__ = ['AudioEnhancer']
+# Speaker separation
+from .speaker_separation import SpeakerSeparator, SeparationConfig
+
+# Detection modules
+from .detection.overlap_detector import OverlapDetector
+from .detection.secondary_speaker import (
+    AdaptiveSecondaryDetection,
+    DetectionResult,
+    SecondarySpeckerDetector
+)
+
+__all__ = [
+    # Core
+    "AudioEnhancer",
+    # Speaker separation
+    "SpeakerSeparator", 
+    "SeparationConfig",
+    # Detection
+    "OverlapDetector",
+    "AdaptiveSecondaryDetection",
+    "DetectionResult",
+    "SecondarySpeckerDetector"
+]
