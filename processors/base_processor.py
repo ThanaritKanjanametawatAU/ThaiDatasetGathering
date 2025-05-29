@@ -26,6 +26,14 @@ except ImportError:
     logger.warning("STT module not available. STT features will be disabled.")
     STT_AVAILABLE = False
 
+# Import Audio Enhancement if available
+try:
+    from .audio_enhancement import AudioEnhancer
+    ENHANCEMENT_AVAILABLE = True
+except ImportError:
+    logger.warning("Audio enhancement module not available. Enhancement features will be disabled.")
+    ENHANCEMENT_AVAILABLE = False
+
 class DatasetProcessingError(Exception):
     """Base exception for all dataset processing errors."""
 
@@ -98,12 +106,30 @@ class BaseProcessor(ABC):
         
         # Streaming checkpoint tracking
         self.streaming_checkpoint_file = None
+        
+        # Noise reduction configuration
+        self.noise_reduction_enabled = config.get("enable_noise_reduction", False)
+        self.noise_reduction_config = config.get("noise_reduction_config", {})
+        self.audio_enhancer = None
+        self.enhancement_stats = {
+            "total_enhanced": 0,
+            "enhancement_failures": 0,
+            "average_snr_improvement": 0.0,
+            "average_processing_time": 0.0,
+            "noise_types_found": {}
+        }
+        
+        # Initialize audio enhancer if enabled
+        if self.noise_reduction_enabled:
+            self._initialize_audio_enhancer()
         self.streaming_checkpoint_data = {}
         
         # STT configuration
         self.enable_stt = config.get("enable_stt", False)
         self.stt_batch_size = config.get("stt_batch_size", 16)
         self.stt_pipeline = None
+        
+        # Note: Audio enhancement is initialized via _initialize_audio_enhancer() if noise_reduction_enabled is True
         
         # Initialize STT if enabled
         if self.enable_stt and STT_AVAILABLE:
@@ -114,6 +140,165 @@ class BaseProcessor(ABC):
             except Exception as e:
                 self.logger.error(f"Failed to initialize STT pipeline: {e}")
                 self.enable_stt = False
+
+    def _initialize_audio_enhancer(self):
+        """Initialize the audio enhancement engine."""
+        try:
+            from processors.audio_enhancement import AudioEnhancer
+            from config import NOISE_REDUCTION_CONFIG
+            
+            # Merge default config with instance config
+            config = {**NOISE_REDUCTION_CONFIG}
+            config.update(self.noise_reduction_config)
+            
+            self.logger.info("Initializing audio enhancement engine...")
+            self.audio_enhancer = AudioEnhancer(
+                use_gpu=config.get('device', 'cuda') == 'cuda',
+                fallback_to_cpu=config.get('fallback_to_cpu', True),
+                clean_threshold_snr=config.get('clean_threshold_snr', 30.0),
+                target_pesq=config.get('target_pesq', 3.0),
+                target_stoi=config.get('target_stoi', 0.85)
+            )
+                
+            self.logger.info("Audio enhancement engine initialized successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize audio enhancer: {e}")
+            self.noise_reduction_enabled = False
+            self.audio_enhancer = None
+
+    def _apply_noise_reduction(self, audio_data: bytes, sample_id: str) -> Optional[bytes]:
+        """
+        Apply noise reduction to audio data.
+        
+        Args:
+            audio_data: Audio data as bytes
+            sample_id: Sample identifier for logging
+            
+        Returns:
+            bytes or None: Enhanced audio data or None if enhancement failed
+        """
+        if not self.audio_enhancer:
+            return None
+            
+        try:
+            import soundfile as sf
+            import io
+            import numpy as np
+            
+            # Convert bytes to numpy array
+            buffer = io.BytesIO(audio_data)
+            audio_array, sample_rate = sf.read(buffer)
+            
+            # Apply enhancement with metadata
+            enhanced_array, metadata = self.audio_enhancer.enhance(
+                audio_array, sample_rate, return_metadata=True
+            )
+            
+            # Update statistics if we have the method
+            if hasattr(self, '_update_enhancement_stats'):
+                self._update_enhancement_stats(metadata)
+            
+            # Convert back to bytes
+            enhanced_buffer = io.BytesIO()
+            sf.write(enhanced_buffer, enhanced_array, sample_rate, format='WAV')
+            enhanced_buffer.seek(0)
+            
+            # Log enhancement results
+            if metadata.get('enhanced', False) and metadata.get('snr_improvement', 0) > 0:
+                self.logger.debug(
+                    f"Enhanced {sample_id}: Noise level: {metadata.get('noise_level', 'unknown')}, "
+                    f"SNR {metadata.get('snr_before', 0):.1f} → "
+                    f"{metadata.get('snr_after', 0):.1f} dB (+{metadata.get('snr_improvement', 0):.1f}dB) "
+                    f"in {metadata.get('processing_time', 0)*1000:.1f}ms using {metadata.get('engine_used', 'unknown')}"
+                )
+            elif not metadata.get('enhanced', True):
+                self.logger.debug(f"Skipped enhancement for {sample_id}: already clean")
+                
+            return enhanced_buffer.read()
+            
+        except Exception as e:
+            self.logger.error(f"Audio enhancement failed for {sample_id}: {e}")
+            self.enhancement_stats['enhancement_failures'] += 1
+            return None
+            
+    def _update_enhancement_stats(self, metadata: Dict[str, Any]):
+        """Update enhancement statistics."""
+        self.enhancement_stats['total_enhanced'] += 1
+        
+        # Update average SNR improvement
+        if 'snr_improvement' in metadata:
+            current_avg = self.enhancement_stats['average_snr_improvement']
+            n = self.enhancement_stats['total_enhanced']
+            self.enhancement_stats['average_snr_improvement'] = (
+                (current_avg * (n - 1) + metadata['snr_improvement']) / n
+            )
+            
+        # Update average processing time
+        if 'processing_time_ms' in metadata:
+            current_avg = self.enhancement_stats['average_processing_time']
+            n = self.enhancement_stats['total_enhanced']
+            self.enhancement_stats['average_processing_time'] = (
+                (current_avg * (n - 1) + metadata['processing_time_ms']) / n
+            )
+            
+        # Update noise types
+        if 'noise_types' in metadata:
+            for noise_type in metadata['noise_types']:
+                if noise_type not in self.enhancement_stats['noise_types_found']:
+                    self.enhancement_stats['noise_types_found'][noise_type] = 0
+                self.enhancement_stats['noise_types_found'][noise_type] += 1
+                
+    def _apply_noise_reduction_with_metadata(self, audio_data: bytes, sample_id: str) -> Optional[Tuple[bytes, Dict[str, Any]]]:
+        """
+        Apply noise reduction to audio data and return metadata.
+        
+        Args:
+            audio_data: Audio data as bytes
+            sample_id: Sample identifier for logging
+            
+        Returns:
+            Tuple of (enhanced_audio_bytes, metadata) or None if enhancement failed
+        """
+        if not self.audio_enhancer:
+            return None
+            
+        try:
+            import soundfile as sf
+            import io
+            import numpy as np
+            
+            # Convert bytes to numpy array
+            buffer = io.BytesIO(audio_data)
+            audio_array, sample_rate = sf.read(buffer)
+            
+            # Apply enhancement
+            enhanced_array, metadata = self.audio_enhancer.enhance_audio(
+                audio_array, sample_rate
+            )
+            
+            # Update statistics
+            self._update_enhancement_stats(metadata)
+            
+            # Convert back to bytes
+            enhanced_buffer = io.BytesIO()
+            sf.write(enhanced_buffer, enhanced_array, sample_rate, format='WAV')
+            enhanced_buffer.seek(0)
+            
+            # Log enhancement results
+            if metadata.get('snr_improvement', 0) > 0:
+                self.logger.debug(
+                    f"Enhanced {sample_id}: SNR {metadata['original_snr']:.1f} → "
+                    f"{metadata['enhanced_snr']:.1f} dB (+{metadata['snr_improvement']:.1f}dB) "
+                    f"in {metadata['processing_time_ms']:.1f}ms"
+                )
+                
+            return enhanced_buffer.read(), metadata
+            
+        except Exception as e:
+            self.logger.error(f"Audio enhancement failed for {sample_id}: {e}")
+            self.enhancement_stats['enhancement_failures'] += 1
+            return None
 
     @abstractmethod
     def process(self, checkpoint: Optional[str] = None, sample_mode: bool = False, sample_size: int = 5) -> Iterator[Dict[str, Any]]:
@@ -404,24 +589,26 @@ class BaseProcessor(ABC):
 
         return errors
 
-    def preprocess_audio(self, audio_data: bytes, sample_id: str = "unknown") -> bytes:
+    def preprocess_audio(self, audio_data: bytes, sample_id: str = "unknown") -> Tuple[bytes, Optional[Dict[str, Any]]]:
         """
-        Apply audio preprocessing and standardization.
+        Apply audio preprocessing, enhancement, and standardization.
         
         Args:
             audio_data: Raw audio data as bytes
             sample_id: Sample identifier for logging
             
         Returns:
-            bytes: Processed audio data
+            Tuple of (processed_audio_bytes, enhancement_metadata)
         """
+        enhancement_metadata = None
+        
         # Skip preprocessing if disabled
         if not self.audio_config.get("enable_standardization", True):
             self.logger.debug(f"Audio standardization disabled for {sample_id}")
-            return audio_data
+            return audio_data, enhancement_metadata
             
         try:
-            self.logger.debug(f"Applying audio standardization for {sample_id}")
+            self.logger.debug(f"Applying audio preprocessing for {sample_id}")
             
             # Log original audio info
             original_info = get_audio_info(audio_data)
@@ -430,7 +617,7 @@ class BaseProcessor(ABC):
                                 f"Length: {original_info['length']:.2f}s, "
                                 f"dB: {original_info['db_level']:.1f}dB")
             
-            # Apply standardization
+            # Apply standardization first
             standardized_audio = standardize_audio(
                 audio_data,
                 target_sample_rate=self.audio_config.get("target_sample_rate", 16000),
@@ -439,23 +626,128 @@ class BaseProcessor(ABC):
                 target_db=self.audio_config.get("target_db", -20.0)
             )
             
-            if standardized_audio is not None:
-                self.logger.debug("Audio standardization successful")
-                
-                # Log standardized audio info
-                standardized_info = get_audio_info(standardized_audio)
-                if standardized_info:
-                    self.logger.debug(f"Standardized audio - SR: {standardized_info['sample_rate']}Hz, "
-                                    f"Length: {standardized_info['length']:.2f}s, "
-                                    f"dB: {standardized_info['db_level']:.1f}dB")
-                return standardized_audio
-            else:
+            if standardized_audio is None:
                 self.logger.warning(f"Audio standardization failed for {sample_id}, using original audio")
-                return audio_data
+                standardized_audio = audio_data
+            
+            # Apply noise reduction if enabled
+            if self.noise_reduction_enabled:
+                enhanced_result = self._apply_noise_reduction_with_metadata(standardized_audio, sample_id)
+                if enhanced_result is not None:
+                    enhanced_audio, enhancement_metadata = enhanced_result
+                    standardized_audio = enhanced_audio
+                    
+            # Log final audio info
+            final_info = get_audio_info(standardized_audio)
+            if final_info:
+                self.logger.debug(f"Final audio - SR: {final_info['sample_rate']}Hz, "
+                                f"Length: {final_info['length']:.2f}s, "
+                                f"dB: {final_info['db_level']:.1f}dB")
+                
+            return standardized_audio, enhancement_metadata
                 
         except Exception as e:
             self.logger.error(f"Error during audio preprocessing for {sample_id}: {str(e)}")
-            return audio_data
+            return audio_data, enhancement_metadata
+
+    def _initialize_audio_enhancer(self):
+        """Initialize the audio enhancement module."""
+        try:
+            from processors.audio_enhancement import AudioEnhancer
+            from config import NOISE_REDUCTION_CONFIG
+            
+            device = NOISE_REDUCTION_CONFIG.get("device", "cuda")
+            level = NOISE_REDUCTION_CONFIG.get("default_level", "moderate")
+            adaptive_mode = NOISE_REDUCTION_CONFIG.get("adaptive_mode", True)
+            
+            self.audio_enhancer = AudioEnhancer(
+                device=device,
+                level=level,
+                adaptive_mode=adaptive_mode
+            )
+            
+            self.logger.info(f"Initialized audio enhancer on {device} with level {level}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize audio enhancer: {e}")
+            self.noise_reduction_enabled = False
+            self.audio_enhancer = None
+            
+    def _apply_noise_reduction(self, audio_data: bytes, sample_id: str) -> Optional[bytes]:
+        """
+        Apply noise reduction to audio data.
+        
+        Args:
+            audio_data: Audio data as bytes
+            sample_id: Sample identifier
+            
+        Returns:
+            Enhanced audio data or None if failed
+        """
+        if not self.audio_enhancer:
+            return None
+            
+        try:
+            import soundfile as sf
+            import io
+            
+            # Convert bytes to numpy array
+            buffer = io.BytesIO(audio_data)
+            audio_array, sample_rate = sf.read(buffer)
+            
+            # Apply enhancement
+            enhanced_array, metrics = self.audio_enhancer.enhance(
+                audio_array,
+                sample_rate,
+                auto_level=True
+            )
+            
+            # Update stats
+            self.enhancement_stats["total_enhanced"] += 1
+            
+            if metrics.get("enhancement_applied", False):
+                # Update improvement stats
+                snr_improvement = metrics.get("snr_improvement", 0)
+                n = self.enhancement_stats["total_enhanced"]
+                self.enhancement_stats["average_snr_improvement"] = (
+                    (self.enhancement_stats["average_snr_improvement"] * (n - 1) + snr_improvement) / n
+                )
+                
+                # Update processing time
+                proc_time = metrics.get("processing_time_ms", 0)
+                self.enhancement_stats["average_processing_time"] = (
+                    (self.enhancement_stats["average_processing_time"] * (n - 1) + proc_time) / n
+                )
+                
+                # Track noise types
+                for noise_type in metrics.get("noise_types_detected", []):
+                    self.enhancement_stats["noise_types_found"][noise_type] = (
+                        self.enhancement_stats["noise_types_found"].get(noise_type, 0) + 1
+                    )
+                    
+                # Log enhancement info
+                self.logger.debug(
+                    f"Enhanced {sample_id}: SNR {metrics.get('original_snr', 0):.1f} → "
+                    f"{metrics.get('enhanced_snr', 0):.1f} dB "
+                    f"(+{snr_improvement:.1f} dB) in {proc_time:.0f}ms"
+                )
+            
+            # Convert back to bytes
+            buffer_out = io.BytesIO()
+            sf.write(buffer_out, enhanced_array, sample_rate, format='WAV')
+            buffer_out.seek(0)
+            enhanced_bytes = buffer_out.read()
+            
+            # Store enhancement metadata
+            if hasattr(self, "_current_sample_metadata"):
+                self._current_sample_metadata["enhancement_metrics"] = metrics
+            
+            return enhanced_bytes
+            
+        except Exception as e:
+            self.logger.error(f"Noise reduction failed for {sample_id}: {e}")
+            self.enhancement_stats["enhancement_failures"] += 1
+            return None
 
     def create_hf_audio_format(self, audio_data: bytes, sample_id: str = "unknown") -> Dict[str, Any]:
         """
