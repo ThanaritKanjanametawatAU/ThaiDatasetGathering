@@ -126,6 +126,37 @@ def parse_arguments() -> argparse.Namespace:
         default=0.3,
         help='Cluster selection epsilon for HDBSCAN (default: 0.3)'
     )
+    
+    # Audio enhancement arguments
+    enhancement_group = parser.add_argument_group('Audio Enhancement')
+    enhancement_group.add_argument(
+        '--enable-audio-enhancement',
+        action='store_true',
+        help='Enable audio quality enhancement (noise reduction, clarity improvement)'
+    )
+    enhancement_group.add_argument(
+        '--enhancement-batch-size',
+        type=int,
+        default=32,
+        help='Batch size for audio enhancement processing (default: 32)'
+    )
+    enhancement_group.add_argument(
+        '--enhancement-dashboard',
+        action='store_true',
+        help='Enable real-time dashboard for monitoring enhancement progress'
+    )
+    enhancement_group.add_argument(
+        '--enhancement-level',
+        type=str,
+        choices=['mild', 'moderate', 'aggressive'],
+        default='moderate',
+        help='Enhancement level: mild, moderate, or aggressive (default: moderate)'
+    )
+    enhancement_group.add_argument(
+        '--enhancement-gpu',
+        action='store_true',
+        help='Use GPU for audio enhancement (if available)'
+    )
 
     args = parser.parse_args()
 
@@ -392,6 +423,37 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
         speaker_identifier = SpeakerIdentification(speaker_config)
         logger.info("Initialized speaker identification system")
     
+    # Initialize audio enhancement if enabled
+    audio_enhancer = None
+    enhancement_metrics_collector = None
+    enhancement_dashboard = None
+    enhancement_buffer = []
+    
+    if args.enable_audio_enhancement:
+        from processors.audio_enhancement.core import AudioEnhancer
+        from monitoring.metrics_collector import MetricsCollector
+        from monitoring.dashboard import EnhancementDashboard
+        
+        enhancement_config = {
+            'use_gpu': args.enhancement_gpu,
+            'fallback_to_cpu': True
+        }
+        
+        audio_enhancer = AudioEnhancer(**enhancement_config)
+        logger.info(f"Initialized audio enhancement system (level: {args.enhancement_level})")
+        
+        # Initialize metrics collector
+        metrics_dir = os.path.join(args.output or '.', 'enhancement_metrics')
+        enhancement_metrics_collector = MetricsCollector(metrics_dir=metrics_dir)
+        
+        # Initialize dashboard if requested
+        if args.enhancement_dashboard:
+            enhancement_dashboard = EnhancementDashboard(
+                metrics_collector=enhancement_metrics_collector,
+                update_interval=10
+            )
+            logger.info("Started enhancement monitoring dashboard")
+    
     # Process each dataset
     total_samples = 0
     batch_buffer = []
@@ -402,10 +464,10 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
             
             # Reset clustering state for new dataset to prevent cross-dataset speaker merging
             if speaker_identifier:
-                # Reset clustering state but keep counter for globally unique IDs
-                # This ensures speakers from different datasets won't be merged
+                # Reset clustering state (embeddings) but preserve speaker counter
+                # This prevents cross-dataset speaker matching while maintaining unique IDs
                 speaker_identifier.reset_for_new_dataset(reset_counter=False)
-                logger.info(f"Reset clustering for {dataset_name}, continuing from speaker ID: SPK_{speaker_identifier.speaker_counter:05d}")
+                logger.info(f"Processing {dataset_name}, continuing from speaker ID: SPK_{speaker_identifier.speaker_counter:05d}")
             
             # Create processor config
             processor_config = {
@@ -423,7 +485,15 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 },
                 "dataset_name": dataset_name,
                 "enable_stt": args.enable_stt if not args.no_stt else False,
-                "stt_batch_size": args.stt_batch_size
+                "stt_batch_size": args.stt_batch_size,
+                "audio_enhancement": {
+                    "enabled": args.enable_audio_enhancement,
+                    "enhancer": audio_enhancer,
+                    "metrics_collector": enhancement_metrics_collector,
+                    "dashboard": enhancement_dashboard,
+                    "batch_size": args.enhancement_batch_size if args.enable_audio_enhancement else None,
+                    "level": args.enhancement_level if args.enable_audio_enhancement else None
+                }
             }
             
             # Create processor
@@ -442,6 +512,77 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 # Assign sequential ID
                 sample["ID"] = f"S{current_id}"
                 current_id += 1
+                
+                # Handle audio enhancement with batch processing
+                if audio_enhancer:
+                    # Add to enhancement buffer for batch processing
+                    enhancement_buffer.append(sample)
+                    
+                    # Process enhancement when buffer is full
+                    if len(enhancement_buffer) >= args.enhancement_batch_size:
+                        logger.info(f"Processing audio enhancement batch of {len(enhancement_buffer)} samples")
+                        
+                        try:
+                            # Prepare batch
+                            audio_batch = [
+                                (s['audio']['array'], s['audio']['sampling_rate'], s['ID'])
+                                for s in enhancement_buffer
+                            ]
+                            
+                            # Process batch
+                            enhanced_results = audio_enhancer.process_batch(
+                                audio_batch,
+                                max_workers=4
+                            )
+                            
+                            # Update samples with enhanced audio
+                            for sample_to_enhance, (enhanced_audio, metadata) in zip(enhancement_buffer, enhanced_results):
+                                sample_to_enhance['audio']['array'] = enhanced_audio
+                                sample_to_enhance['enhancement_metadata'] = metadata
+                                
+                                # Add metrics to collector
+                                if enhancement_metrics_collector:
+                                    metrics_dict = {
+                                        'snr_improvement': metadata.get('snr_improvement', 0),
+                                        'pesq_score': metadata.get('pesq', 0),
+                                        'stoi_score': metadata.get('stoi', 0),
+                                        'processing_time': metadata.get('processing_time', 0),
+                                        'noise_level': metadata.get('noise_level', 'unknown'),
+                                        'audio_file': sample_to_enhance['ID']
+                                    }
+                                    enhancement_metrics_collector.add_sample(sample_to_enhance['ID'], metrics_dict)
+                                
+                                # Update dashboard
+                                if enhancement_dashboard:
+                                    enhancement_dashboard.update_progress(sample_to_enhance['ID'], success=True)
+                            
+                            # Move enhanced samples to speaker identification
+                            if speaker_identifier:
+                                embedding_buffer.extend(enhancement_buffer)
+                            else:
+                                # No speaker identification - assign IDs and add to batch buffer
+                                for enhanced_sample in enhancement_buffer:
+                                    enhanced_sample['speaker_id'] = f"SPK_{total_samples + 1:05d}"
+                                    batch_buffer.append(enhanced_sample)
+                            
+                            enhancement_buffer = []
+                            
+                        except Exception as e:
+                            logger.error(f"Batch audio enhancement failed: {str(e)}")
+                            # Fall back to original audio for the batch
+                            for sample_to_enhance in enhancement_buffer:
+                                if enhancement_dashboard:
+                                    enhancement_dashboard.update_progress(sample_to_enhance['ID'], success=False)
+                                # Move to next stage with original audio
+                                if speaker_identifier:
+                                    embedding_buffer.append(sample_to_enhance)
+                                else:
+                                    sample_to_enhance['speaker_id'] = f"SPK_{total_samples + 1:05d}"
+                                    batch_buffer.append(sample_to_enhance)
+                            enhancement_buffer = []
+                    
+                    # Skip normal flow as sample is in enhancement buffer
+                    continue
                 
                 # Handle speaker identification
                 if speaker_identifier:
@@ -491,6 +632,67 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 if sample_count % 1000 == 0:
                     logger.info(f"Processed {sample_count} samples from {dataset_name}, total: {total_samples}")
             
+            # Process any remaining enhancement buffer for this dataset
+            if audio_enhancer and enhancement_buffer:
+                logger.info(f"Processing final enhancement batch for {dataset_name}: {len(enhancement_buffer)} samples")
+                try:
+                    # Prepare batch
+                    audio_batch = [
+                        (s['audio']['array'], s['audio']['sampling_rate'], s['ID'])
+                        for s in enhancement_buffer
+                    ]
+                    
+                    # Process batch
+                    enhanced_results = audio_enhancer.process_batch(
+                        audio_batch,
+                        max_workers=4
+                    )
+                    
+                    # Update samples with enhanced audio
+                    for sample_to_enhance, (enhanced_audio, metadata) in zip(enhancement_buffer, enhanced_results):
+                        sample_to_enhance['audio']['array'] = enhanced_audio
+                        sample_to_enhance['enhancement_metadata'] = metadata
+                        
+                        # Add metrics to collector
+                        if enhancement_metrics_collector:
+                            metrics_dict = {
+                                'snr_improvement': metadata.get('snr_improvement', 0),
+                                'pesq_score': metadata.get('pesq', 0),
+                                'stoi_score': metadata.get('stoi', 0),
+                                'processing_time': metadata.get('processing_time', 0),
+                                'noise_level': metadata.get('noise_level', 'unknown'),
+                                'audio_file': sample_to_enhance['ID']
+                            }
+                            enhancement_metrics_collector.add_sample(sample_to_enhance['ID'], metrics_dict)
+                        
+                        # Update dashboard
+                        if enhancement_dashboard:
+                            enhancement_dashboard.update_progress(sample_to_enhance['ID'], success=True)
+                    
+                    # Move enhanced samples to speaker identification
+                    if speaker_identifier:
+                        embedding_buffer.extend(enhancement_buffer)
+                    else:
+                        # No speaker identification - assign IDs and add to batch buffer
+                        for enhanced_sample in enhancement_buffer:
+                            enhanced_sample['speaker_id'] = f"SPK_{total_samples + 1:05d}"
+                            batch_buffer.append(enhanced_sample)
+                    
+                except Exception as e:
+                    logger.error(f"Final batch audio enhancement failed: {str(e)}")
+                    # Fall back to original audio for the batch
+                    for sample_to_enhance in enhancement_buffer:
+                        if enhancement_dashboard:
+                            enhancement_dashboard.update_progress(sample_to_enhance['ID'], success=False)
+                        # Move to next stage with original audio
+                        if speaker_identifier:
+                            embedding_buffer.append(sample_to_enhance)
+                        else:
+                            sample_to_enhance['speaker_id'] = f"SPK_{total_samples + 1:05d}"
+                            batch_buffer.append(sample_to_enhance)
+                
+                enhancement_buffer = []  # Clear buffer for next dataset
+            
             # Process any remaining embeddings for this dataset before moving to next
             if speaker_identifier and embedding_buffer:
                 logger.info(f"Processing final speaker batch for {dataset_name}: {len(embedding_buffer)} samples")
@@ -509,6 +711,52 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
             if args.verbose:
                 logger.exception(e)
             # Continue with next dataset instead of failing completely
+    
+    # Process any remaining enhancement buffer (should be empty but check to be safe)
+    if audio_enhancer and enhancement_buffer:
+        logger.warning(f"Unexpected: {len(enhancement_buffer)} samples remain in enhancement buffer")
+        try:
+            # Process remaining samples
+            audio_batch = [
+                (s['audio']['array'], s['audio']['sampling_rate'], s['ID'])
+                for s in enhancement_buffer
+            ]
+            
+            enhanced_results = audio_enhancer.process_batch(
+                audio_batch,
+                max_workers=4
+            )
+            
+            for sample_to_enhance, (enhanced_audio, metadata) in zip(enhancement_buffer, enhanced_results):
+                sample_to_enhance['audio']['array'] = enhanced_audio
+                sample_to_enhance['enhancement_metadata'] = metadata
+                
+                if enhancement_metrics_collector:
+                    metrics_dict = {
+                        'snr_improvement': metadata.get('snr_improvement', 0),
+                        'pesq_score': metadata.get('pesq', 0),
+                        'stoi_score': metadata.get('stoi', 0),
+                        'processing_time': metadata.get('processing_time', 0),
+                        'noise_level': metadata.get('noise_level', 'unknown'),
+                        'audio_file': sample_to_enhance['ID']
+                    }
+                    enhancement_metrics_collector.add_sample(sample_to_enhance['ID'], metrics_dict)
+                
+                if speaker_identifier:
+                    embedding_buffer.append(sample_to_enhance)
+                else:
+                    sample_to_enhance['speaker_id'] = f"SPK_{total_samples + 1:05d}"
+                    batch_buffer.append(sample_to_enhance)
+                    
+        except Exception as e:
+            logger.error(f"Final enhancement processing failed: {str(e)}")
+            # Fall back to original audio
+            for sample_to_enhance in enhancement_buffer:
+                if speaker_identifier:
+                    embedding_buffer.append(sample_to_enhance)
+                else:
+                    sample_to_enhance['speaker_id'] = f"SPK_{total_samples + 1:05d}"
+                    batch_buffer.append(sample_to_enhance)
     
     # Process remaining embeddings (should be empty now since we process at end of each dataset)
     if speaker_identifier and embedding_buffer:
@@ -529,6 +777,17 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
     # Clean up speaker identifier
     if speaker_identifier:
         speaker_identifier.cleanup()
+    
+    # Clean up audio enhancement components
+    # AudioEnhancer doesn't have a cleanup method
+    
+    if enhancement_dashboard:
+        enhancement_dashboard.stop()
+    
+    if enhancement_metrics_collector:
+        summary_path = os.path.join(enhancement_metrics_collector.metrics_dir, 'summary.json')
+        enhancement_metrics_collector.export_to_json(summary_path)
+        logger.info(f"Enhancement metrics saved to {summary_path}")
     
     # Upload dataset card
     if uploader:
@@ -670,7 +929,7 @@ def main() -> int:
         for dataset_name, samples in processed_datasets.items():
             logger.info(f"Processing speaker identification for {dataset_name}")
             
-            # Reset speaker identification for each dataset
+            # Reset clustering state but preserve counter to prevent cross-dataset matching
             speaker_identifier.reset_for_new_dataset(reset_counter=False)
             
             # Find samples from this dataset in combined_samples

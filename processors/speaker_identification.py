@@ -207,7 +207,8 @@ class SpeakerIdentification:
         
         # Use adaptive clustering based on batch size and similarity distribution
         # For Thai Voice dataset, we need more lenient parameters
-        if len(embeddings) < 50:
+        # Force AgglomerativeClustering for all batch sizes due to HDBSCAN issues with diverse audio
+        if True:  # Always use AgglomerativeClustering
             # Small batch - use Agglomerative Clustering
             # This works better for small datasets with varying similarities
             
@@ -222,13 +223,19 @@ class SpeakerIdentification:
             std_sim = np.std(upper_triangle)
             
             # Adaptive distance threshold based on similarity distribution
-            # If similarities are very high, use stricter threshold
-            if mean_sim > 0.9:
-                distance_threshold = 0.2  # Corresponds to 0.8 minimum similarity
-            elif mean_sim > 0.7:
-                distance_threshold = 0.4  # Corresponds to 0.6 minimum similarity
-            else:
+            # Adjusted for real-world diverse audio data
+            if mean_sim > 0.95:
+                # Very high similarity - use very strict threshold
+                distance_threshold = 0.1  # Corresponds to 0.9 minimum similarity
+            elif mean_sim > 0.8:
+                distance_threshold = 0.3  # Corresponds to 0.7 minimum similarity
+            elif mean_sim > 0.6:
+                distance_threshold = 0.5  # Corresponds to 0.5 minimum similarity
+            elif mean_sim > 0.4:
                 distance_threshold = 0.6  # Corresponds to 0.4 minimum similarity
+            else:
+                # Very diverse audio - use lenient threshold
+                distance_threshold = 0.7  # Corresponds to 0.3 minimum similarity
             
             clustering = AgglomerativeClustering(
                 n_clusters=None,
@@ -245,13 +252,23 @@ class SpeakerIdentification:
             similarities = np.dot(normalized_embeddings, normalized_embeddings.T)
             mean_similarity = np.mean(similarities[np.triu_indices_from(similarities, k=1)])
             
-            if mean_similarity < 0.6:
-                # Low overall similarity - use very lenient parameters
-                epsilon = 0.7
-                min_cluster_size = max(2, len(embeddings) // 20)
+            if mean_similarity > 0.9:
+                # Very high similarity - need stricter parameters
+                epsilon = 0.2
+                min_cluster_size = max(2, len(embeddings) // 30)
                 min_samples = 1
+            elif mean_similarity > 0.7:
+                # Moderate similarity
+                epsilon = 0.4
+                min_cluster_size = max(2, len(embeddings) // 25)
+                min_samples = 2
+            elif mean_similarity > 0.6:
+                # Lower similarity - use more lenient parameters
+                epsilon = 0.5
+                min_cluster_size = max(3, len(embeddings) // 20)
+                min_samples = 2
             else:
-                # Higher similarity - can use stricter parameters
+                # Low similarity - use default parameters
                 epsilon = self.clustering_params.get('cluster_selection_epsilon', 0.5)
                 min_cluster_size = self.clustering_params.get('min_cluster_size', 5)
                 min_samples = self.clustering_params.get('min_samples', 3)
@@ -269,6 +286,14 @@ class SpeakerIdentification:
         # Log clustering results
         unique_labels = set(labels) - {-1}
         noise_count = np.sum(labels == -1)
+        
+        # Calculate and log similarity statistics
+        if len(embeddings) < 50:  # For small batches
+            similarities_debug = 1 - cosine_distances
+            upper_tri = similarities_debug[np.triu_indices_from(similarities_debug, k=1)]
+            logger.info(f"Small batch clustering - Similarity stats: mean={np.mean(upper_tri):.3f}, "
+                       f"std={np.std(upper_tri):.3f}, min={np.min(upper_tri):.3f}, max={np.max(upper_tri):.3f}")
+        
         logger.info(f"Clustering found {len(unique_labels)} clusters and {noise_count} noise points "
                    f"from {len(embeddings)} samples")
         
