@@ -39,7 +39,7 @@ class DetectionResult:
         return self.end_time - self.start_time
 
 
-class SecondarySpeckerDetector:
+class SecondarySpeakerDetector:
     """Base class for secondary speaker detection"""
     
     def __init__(self,
@@ -72,7 +72,7 @@ class SecondarySpeckerDetector:
         raise NotImplementedError
 
 
-class AdaptiveSecondaryDetection(SecondarySpeckerDetector):
+class AdaptiveSecondaryDetection(SecondarySpeakerDetector):
     """
     Adaptive multi-modal secondary speaker detection
     
@@ -111,7 +111,12 @@ class AdaptiveSecondaryDetection(SecondarySpeckerDetector):
         
         # Initialize speaker identification system
         try:
-            self.speaker_id = SpeakerIdentification()
+            from config import SPEAKER_ID_CONFIG
+            # Create a minimal config for speaker identification
+            speaker_config = SPEAKER_ID_CONFIG.copy()
+            speaker_config['store_embeddings'] = False
+            speaker_config['fresh'] = True
+            self.speaker_id = SpeakerIdentification(speaker_config)
             self.has_speaker_id = True
         except Exception as e:
             logger.warning(f"Could not initialize speaker identification: {e}")
@@ -176,7 +181,7 @@ class AdaptiveSecondaryDetection(SecondarySpeckerDetector):
         # Extract main speaker profile from first second
         main_speaker_segment = audio_array[:sample_rate]
         try:
-            main_embedding = self.speaker_id.extract_embeddings(main_speaker_segment, sample_rate)
+            main_embedding = self.speaker_id.extract_embedding(main_speaker_segment, sample_rate)
         except Exception as e:
             logger.warning(f"Failed to extract main speaker embedding: {e}")
             return detections
@@ -189,7 +194,7 @@ class AdaptiveSecondaryDetection(SecondarySpeckerDetector):
             segment = audio_array[i:i+window_size]
             
             try:
-                segment_embedding = self.speaker_id.extract_embeddings(segment, sample_rate)
+                segment_embedding = self.speaker_id.extract_embedding(segment, sample_rate)
                 
                 # Calculate similarity with main speaker
                 similarity = self._cosine_similarity(main_embedding, segment_embedding)

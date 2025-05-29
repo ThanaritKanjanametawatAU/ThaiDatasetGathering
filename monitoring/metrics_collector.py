@@ -468,10 +468,12 @@ class MetricsCollector:
         for key in metric_keys:
             values = [m.get(key, 0) for m in self.metrics_window]
             
-            # Simple linear regression trend
-            x = np.arange(len(values))
-            coeffs = np.polyfit(x, values, 1)
-            trends[f"{key}_trend"] = float(coeffs[0])  # Slope
+            # Only calculate trends for numeric fields
+            if values and isinstance(values[0], (int, float, np.number)):
+                # Simple linear regression trend
+                x = np.arange(len(values))
+                coeffs = np.polyfit(x, values, 1)
+                trends[f"{key}_trend"] = float(coeffs[0])  # Slope
             
         return trends
         
@@ -490,15 +492,24 @@ class MetricsCollector:
         for key in metric_keys:
             values = [m.get(key, 0) for m in self.metrics_window]
             
-            stats[key] = {
-                "mean": float(np.mean(values)),
-                "std": float(np.std(values)),
-                "min": float(np.min(values)),
-                "max": float(np.max(values)),
-                "median": float(np.median(values)),
-                "q1": float(np.percentile(values, 25)),
-                "q3": float(np.percentile(values, 75))
-            }
+            # Only calculate numeric stats for numeric fields
+            if values and isinstance(values[0], (int, float, np.number)):
+                stats[key] = {
+                    "mean": float(np.mean(values)),
+                    "std": float(np.std(values)),
+                    "min": float(np.min(values)),
+                    "max": float(np.max(values)),
+                    "median": float(np.median(values)),
+                    "q1": float(np.percentile(values, 25)),
+                    "q3": float(np.percentile(values, 75))
+                }
+            else:
+                # For non-numeric fields, just count unique values
+                unique_values = list(set(values))
+                stats[key] = {
+                    "unique_values": unique_values,
+                    "count": len(unique_values)
+                }
             
         return stats
         

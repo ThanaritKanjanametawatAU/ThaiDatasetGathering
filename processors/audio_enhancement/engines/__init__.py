@@ -1,6 +1,6 @@
 """
 Audio Enhancement Engines
-Provides different noise reduction and audio processing implementations.
+Provides different noise reduction implementations.
 """
 
 from .denoiser import DenoiserEngine

@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .engines.denoiser import DenoiserEngine
 from .engines.spectral_gating import SpectralGatingEngine
+from .speaker_separation import SpeakerSeparator, SeparationConfig
 from utils.audio_metrics import (
     calculate_snr, calculate_pesq, calculate_stoi,
     calculate_spectral_distortion, calculate_speaker_similarity,
@@ -50,6 +51,12 @@ class AudioEnhancer:
             'denoiser_ratio': 0.01,  # Lower = more denoising
             'spectral_ratio': 0.7,
             'passes': 3
+        },
+        'secondary_speaker': {
+            'skip': False,
+            'use_speaker_separation': True,
+            'suppression_strength': 0.6,
+            'passes': 1
         }
     }
     
@@ -80,13 +87,24 @@ class AudioEnhancer:
         # Initialize engines
         self._init_engines()
         
+        # Initialize speaker separator
+        separation_config = SeparationConfig(
+            suppression_strength=0.6,
+            confidence_threshold=0.5,
+            preserve_main_speaker=True,
+            use_sepformer=False  # Start with False to avoid dependency issues
+        )
+        self.speaker_separator = SpeakerSeparator(separation_config)
+        
         # Statistics
         self.stats = {
             'total_processed': 0,
             'skipped_clean': 0,
             'enhanced': 0,
             'total_snr_improvement': 0.0,
-            'total_processing_time': 0.0
+            'total_processing_time': 0.0,
+            'secondary_speakers_detected': 0,
+            'secondary_speakers_removed': 0
         }
     
     def _init_engines(self):
@@ -122,7 +140,7 @@ class AudioEnhancer:
         quick: bool = True
     ) -> str:
         """
-        Quickly assess noise level in audio.
+        Quickly assess noise level in audio, including secondary speaker detection.
         
         Args:
             audio: Input audio signal
@@ -130,11 +148,26 @@ class AudioEnhancer:
             quick: Whether to use quick assessment (< 0.1s)
             
         Returns:
-            Noise level category: 'clean', 'mild', 'moderate', 'aggressive'
+            Noise level category: 'clean', 'mild', 'moderate', 'aggressive', 'secondary_speaker'
         """
         start_time = time.time()
         
         try:
+            # Quick secondary speaker detection
+            if quick and hasattr(self, 'speaker_separator'):
+                # Do a quick detection check
+                separation_result = self.speaker_separator.separate_speakers(
+                    audio[:min(len(audio), sample_rate * 2)],  # First 2 seconds
+                    sample_rate
+                )
+                if separation_result['detections']:
+                    # If we detect secondary speakers with high confidence
+                    max_confidence = max([d.confidence for d in separation_result['detections']])
+                    if max_confidence > 0.6:
+                        logger.debug(f"Secondary speaker detected with confidence {max_confidence:.2f}")
+                        return 'secondary_speaker'
+            
+            # Original noise assessment
             # Quick SNR estimation using first few seconds
             if quick and len(audio) > sample_rate * 2:
                 # Use only first 2 seconds for quick assessment
@@ -221,10 +254,10 @@ class AudioEnhancer:
             noise_level = self.assess_noise_level(audio, sample_rate)
         
         # Get enhancement configuration
-        config = self.ENHANCEMENT_LEVELS[noise_level]
+        config = self.ENHANCEMENT_LEVELS.get(noise_level, self.ENHANCEMENT_LEVELS['moderate'])
         
         # Skip if clean
-        if config['skip']:
+        if config.get('skip', False):
             self.stats['skipped_clean'] += 1
             if return_metadata:
                 metadata = {
@@ -234,12 +267,43 @@ class AudioEnhancer:
                     'snr_before': self.clean_threshold_snr,
                     'snr_after': self.clean_threshold_snr,
                     'processing_time': time.time() - start_time,
-                    'engine_used': 'none'
+                    'engine_used': 'none',
+                    'secondary_speaker_detected': False
                 }
                 return audio, metadata
             return audio
         
-        # Progressive enhancement
+        # Check if we should use speaker separation
+        if config.get('use_speaker_separation', False) or noise_level == 'secondary_speaker':
+            # Use speaker separator
+            separation_result = self.speaker_separator.separate_speakers(audio, sample_rate)
+            enhanced = separation_result['audio']
+            detections = separation_result['detections']
+            
+            # Update statistics
+            if detections:
+                self.stats['secondary_speakers_detected'] += 1
+                self.stats['secondary_speakers_removed'] += len(detections)
+            
+            if return_metadata:
+                processing_time = time.time() - start_time
+                metadata = {
+                    'enhanced': True,
+                    'noise_level': noise_level,
+                    'enhancement_level': 'secondary_speaker_removal',
+                    'snr_before': initial_metrics.get('snr', 0) if 'initial_metrics' in locals() else 0,
+                    'snr_after': self._measure_quality_quick(enhanced, audio, sample_rate).get('snr', 0),
+                    'processing_time': processing_time,
+                    'engine_used': 'speaker_separator',
+                    'secondary_speaker_detected': len(detections) > 0,
+                    'secondary_speaker_confidence': max([d.confidence for d in detections]) if detections else 0.0,
+                    'num_secondary_speakers': len(detections),
+                    'speaker_similarity': separation_result['metrics'].get('similarity_preservation', 1.0)
+                }
+                return enhanced, metadata
+            return enhanced
+        
+        # Progressive enhancement (original code)
         enhanced = audio.copy()
         original_audio = audio.copy()
         passes_applied = 0
