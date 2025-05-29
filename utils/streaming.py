@@ -126,9 +126,16 @@ class StreamingUploader:
                 "confidence_score": Value("float64")
             })
             
+            # Clean samples - remove any fields not in the schema
+            allowed_fields = set(features.keys())
+            cleaned_samples = []
+            for sample in samples:
+                cleaned_sample = {k: v for k, v in sample.items() if k in allowed_fields}
+                cleaned_samples.append(cleaned_sample)
+            
             # Convert samples to Dataset with explicit features
             # The Audio feature will handle the conversion automatically
-            dataset = Dataset.from_list(samples, features=features)
+            dataset = Dataset.from_list(cleaned_samples, features=features)
             
             # Save as parquet
             dataset.to_parquet(temp_path)

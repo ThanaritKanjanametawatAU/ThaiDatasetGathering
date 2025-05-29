@@ -8,9 +8,6 @@ from scipy import signal
 from scipy.linalg import toeplitz
 import warnings
 from typing import Union, Tuple, Optional
-import logging
-
-logger = logging.getLogger(__name__)
 
 # Try to import optional libraries
 try:
@@ -222,168 +219,6 @@ def calculate_speaker_similarity(
     return float(similarity)
 
 
-def calculate_si_sdr(reference: np.ndarray, estimated: np.ndarray) -> float:
-    """
-    Calculate Scale-Invariant Signal-to-Distortion Ratio (SI-SDR).
-    
-    Args:
-        reference: Reference signal
-        estimated: Estimated signal
-        
-    Returns:
-        SI-SDR in dB
-    """
-    if len(reference) != len(estimated):
-        min_len = min(len(reference), len(estimated))
-        reference = reference[:min_len]
-        estimated = estimated[:min_len]
-        
-    # Remove mean
-    reference = reference - np.mean(reference)
-    estimated = estimated - np.mean(estimated)
-    
-    # Compute SI-SDR
-    alpha = np.dot(estimated, reference) / np.dot(reference, reference)
-    projection = alpha * reference
-    noise = estimated - projection
-    
-    si_sdr = 10 * np.log10(np.dot(projection, projection) / np.dot(noise, noise))
-    
-    return float(si_sdr)
-
-
-def calculate_lsd(reference_spec: np.ndarray, estimated_spec: np.ndarray) -> float:
-    """
-    Calculate Log Spectral Distance (LSD).
-    
-    Args:
-        reference_spec: Reference spectrogram (magnitude)
-        estimated_spec: Estimated spectrogram (magnitude)
-        
-    Returns:
-        LSD value (lower is better)
-    """
-    # Ensure same shape
-    if reference_spec.shape != estimated_spec.shape:
-        min_frames = min(reference_spec.shape[0], estimated_spec.shape[0])
-        min_bins = min(reference_spec.shape[1], estimated_spec.shape[1])
-        reference_spec = reference_spec[:min_frames, :min_bins]
-        estimated_spec = estimated_spec[:min_frames, :min_bins]
-        
-    # Add small epsilon to avoid log(0)
-    eps = 1e-10
-    
-    # Calculate LSD
-    log_diff = np.log(reference_spec + eps) - np.log(estimated_spec + eps)
-    lsd = np.sqrt(np.mean(log_diff ** 2))
-    
-    return float(lsd)
-
-
-def calculate_spectral_convergence(reference_spec: np.ndarray, 
-                                 estimated_spec: np.ndarray) -> float:
-    """
-    Calculate spectral convergence.
-    
-    Args:
-        reference_spec: Reference spectrogram
-        estimated_spec: Estimated spectrogram
-        
-    Returns:
-        Spectral convergence value
-    """
-    # Ensure same shape
-    if reference_spec.shape != estimated_spec.shape:
-        min_frames = min(reference_spec.shape[0], estimated_spec.shape[0])
-        min_bins = min(reference_spec.shape[1], estimated_spec.shape[1])
-        reference_spec = reference_spec[:min_frames, :min_bins]
-        estimated_spec = estimated_spec[:min_frames, :min_bins]
-        
-    # Calculate Frobenius norm
-    diff_norm = np.linalg.norm(reference_spec - estimated_spec, 'fro')
-    ref_norm = np.linalg.norm(reference_spec, 'fro')
-    
-    if ref_norm == 0:
-        return 0.0
-        
-    convergence = diff_norm / ref_norm
-    
-    return float(convergence)
-
-
-def calculate_mcd(reference_mfcc: np.ndarray, estimated_mfcc: np.ndarray) -> float:
-    """
-    Calculate Mel Cepstral Distortion (MCD).
-    
-    Args:
-        reference_mfcc: Reference MFCC features
-        estimated_mfcc: Estimated MFCC features
-        
-    Returns:
-        MCD value in dB
-    """
-    # Ensure same shape
-    if reference_mfcc.shape != estimated_mfcc.shape:
-        min_frames = min(reference_mfcc.shape[0], estimated_mfcc.shape[0])
-        min_coeffs = min(reference_mfcc.shape[1], estimated_mfcc.shape[1])
-        reference_mfcc = reference_mfcc[:min_frames, :min_coeffs]
-        estimated_mfcc = estimated_mfcc[:min_frames, :min_coeffs]
-        
-    # Calculate MCD
-    diff = reference_mfcc - estimated_mfcc
-    mcd = np.sqrt(np.mean(np.sum(diff ** 2, axis=1))) * (10 / np.log(10)) * np.sqrt(2)
-    
-    return float(mcd)
-
-
-def calculate_rmse(reference: np.ndarray, estimated: np.ndarray) -> float:
-    """
-    Calculate Root Mean Square Error.
-    
-    Args:
-        reference: Reference signal
-        estimated: Estimated signal
-        
-    Returns:
-        RMSE value
-    """
-    if len(reference) != len(estimated):
-        min_len = min(len(reference), len(estimated))
-        reference = reference[:min_len]
-        estimated = estimated[:min_len]
-        
-    rmse = np.sqrt(np.mean((reference - estimated) ** 2))
-    
-    return float(rmse)
-
-
-def calculate_correlation(reference: np.ndarray, estimated: np.ndarray) -> float:
-    """
-    Calculate correlation coefficient between signals.
-    
-    Args:
-        reference: Reference signal
-        estimated: Estimated signal
-        
-    Returns:
-        Correlation coefficient (-1 to 1)
-    """
-    if len(reference) != len(estimated):
-        min_len = min(len(reference), len(estimated))
-        reference = reference[:min_len]
-        estimated = estimated[:min_len]
-        
-    if len(reference) == 0:
-        return 0.0
-        
-    correlation = np.corrcoef(reference, estimated)[0, 1]
-    
-    if np.isnan(correlation):
-        return 0.0
-        
-    return float(correlation)
-
-
 def _extract_mfcc(
     signal_data: np.ndarray,
     sample_rate: int,
@@ -511,9 +346,6 @@ def calculate_all_metrics(
         'snr': calculate_snr(reference, degraded),
         'spectral_distortion': calculate_spectral_distortion(reference, degraded, sample_rate),
         'speaker_similarity': calculate_speaker_similarity(reference, degraded, sample_rate),
-        'si_sdr': calculate_si_sdr(reference, degraded),
-        'rmse': calculate_rmse(reference, degraded),
-        'correlation': calculate_correlation(reference, degraded),
     }
     
     # Add optional metrics if available
@@ -524,22 +356,6 @@ def calculate_all_metrics(
         metrics['stoi'] = calculate_stoi(reference, degraded, sample_rate)
     
     return metrics
-
-
-def evaluate_enhancement_quality(original: np.ndarray, enhanced: np.ndarray,
-                               sample_rate: int) -> dict:
-    """
-    Comprehensive evaluation of audio enhancement quality.
-    
-    Args:
-        original: Original audio signal
-        enhanced: Enhanced audio signal
-        sample_rate: Sample rate
-        
-    Returns:
-        Dictionary of quality metrics
-    """
-    return calculate_all_metrics(original, enhanced, sample_rate)
 
 
 class AudioQualityMetrics:

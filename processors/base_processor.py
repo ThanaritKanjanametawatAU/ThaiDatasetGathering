@@ -1099,7 +1099,8 @@ class BaseProcessor(ABC):
         # Apply audio preprocessing if enabled
         if self.audio_config.get("enable_standardization", True):
             try:
-                audio_bytes = self.preprocess_audio(audio_bytes, sample_id)
+                audio_bytes, enhancement_metadata = self.preprocess_audio(audio_bytes, sample_id)
+                # TODO: Store enhancement_metadata if needed
             except Exception as e:
                 self.logger.error(f"Audio preprocessing failed for {sample_id}: {e}")
                 return None
