@@ -6,14 +6,14 @@ Provides detection capabilities for speaker separation and audio quality enhance
 
 from .overlap_detector import OverlapDetector
 from .secondary_speaker import (
-    SecondarySpeckerDetector,
+    SecondarySpeakerDetector,
     AdaptiveSecondaryDetection,
     DetectionResult
 )
 
 __all__ = [
     "OverlapDetector",
-    "SecondarySpeckerDetector", 
+    "SecondarySpeakerDetector", 
     "AdaptiveSecondaryDetection",
     "DetectionResult"
 ]
