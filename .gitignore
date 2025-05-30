@@ -195,12 +195,18 @@ scripts/debug/
 scripts/analysis/
 test_enhancement.sh
 test_final_verification.sh
+test_enhancement_params.py
 
 # Enhancement metrics
 enhancement_metrics/
+
+# Git worktrees
+trees/
 
 # Image files
 *.png
 *.jpg
 *.jpeg
 image.png
+
+.hf_token

@@ -10,11 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Moved common `_save_processing_checkpoint` method to base processor
 - Created scripts directory structure for better organization
+- Added `ultra_aggressive` enhancement level for maximum noise removal
+  - 5-pass processing with full wet signal from denoiser
+  - 90% spectral gating ratio for aggressive filtering
+  - 50% preserve ratio to prevent over-processing
+  - More sensitive noise detection thresholds
 
 ### Changed
 - Refactored processors to reduce code duplication (~600 lines removed)
 - Moved analysis and debug scripts from root to scripts/ directory
 - Improved code organization following ML pipeline best practices
+- Updated noise detection thresholds to be more sensitive
+- Increased spectral gate threshold to 3x noise floor (was 2x)
+- Adjusted noise floor estimation to use bottom 30% of magnitude values (was 20%)
 
 ### Fixed
 - Fixed ~100 linting issues across the codebase
@@ -23,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed import ordering issues
 - Removed unused imports in processors (time, os, json, Path)
 - Removed duplicate methods in base_processor.py (_initialize_audio_enhancer, _apply_noise_reduction)
+
+### Known Issues
+- Append mode IDs restart at S1 instead of continuing from last ID
+  - Root cause: `get_last_id()` function fails with SplitInfo mismatch error
+  - Speaker IDs work correctly across append operations
 
 ## [2.3.0] - 2025-01-29
 

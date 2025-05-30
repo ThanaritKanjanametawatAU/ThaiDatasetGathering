@@ -148,9 +148,9 @@ def parse_arguments() -> argparse.Namespace:
     enhancement_group.add_argument(
         '--enhancement-level',
         type=str,
-        choices=['mild', 'moderate', 'aggressive'],
+        choices=['mild', 'moderate', 'aggressive', 'ultra_aggressive'],
         default='moderate',
-        help='Enhancement level: mild, moderate, or aggressive (default: moderate)'
+        help='Enhancement level: mild, moderate, aggressive, or ultra_aggressive (default: moderate)'
     )
     enhancement_group.add_argument(
         '--enhancement-gpu',

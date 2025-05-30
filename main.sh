@@ -26,8 +26,8 @@ warning() {
 
 # Configuration
 CONDA_ENV="thaidataset"
-SAMPLES_PER_DATASET=10000
-HF_REPO="Thanarit/Thai-Voice-Test7"  # Test repository for verification
+SAMPLES_PER_DATASET=100
+HF_REPO="Thanarit/Thai-Voice-Test2"  # Test repository for verification
 
 # Feature flags (all enabled)
 ENABLE_SPEAKER_ID="--enable-speaker-id"  # Re-enabled after fixing clustering
@@ -37,7 +37,7 @@ ENABLE_STREAMING="--streaming"
 ENABLE_DASHBOARD=""  # Disabled dashboard for now
 
 # Enhancement settings
-ENHANCEMENT_LEVEL="aggressive"  # Changed from moderate to aggressive for maximum enhancement
+ENHANCEMENT_LEVEL="ultra_aggressive"  # Changed to ultra_aggressive for MAXIMUM noise removal
 ENHANCEMENT_GPU="--enhancement-gpu"  # Using GPU for faster processing (remove if no GPU)
 
 # Datasets to test (2 datasets)
@@ -82,8 +82,8 @@ rm -rf enhancement_metrics || true
 log "Running main.py with all features enabled..."
 
 CMD="python main.py \
-    --fresh \
-    $DATASETS \
+    --append \
+    MozillaCommonVoice \
     --sample \
     --sample-size $SAMPLES_PER_DATASET \
     --hf-repo $HF_REPO \

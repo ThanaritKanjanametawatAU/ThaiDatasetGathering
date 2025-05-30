@@ -133,7 +133,14 @@ The project has been updated to use HuggingFace's native audio format for better
 - **Enhancement Levels**:
   - Mild: Light noise reduction, preserves audio character
   - Moderate: Balanced enhancement (default)
-  - Aggressive: Maximum noise removal, may affect voice quality
+  - Aggressive: Strong noise removal, may affect voice quality
+  - **Ultra Aggressive (May 30, 2025)**: Maximum noise removal with multi-pass processing
+    - Uses full wet signal from denoiser (0.0 dry/wet ratio)
+    - 90% spectral gating ratio for aggressive frequency filtering
+    - 5 passes for thorough cleaning
+    - 50% preserve ratio to mix original signal back to prevent over-processing
+    - More sensitive noise detection thresholds
+    - Higher spectral gate threshold (3x noise floor)
 - **Real-time Monitoring**:
   - Live dashboard for tracking enhancement progress
   - Before/after audio comparison
@@ -142,6 +149,12 @@ The project has been updated to use HuggingFace's native audio format for better
   - Efficient parallel processing of audio samples
   - GPU acceleration support
   - Automatic fallback to CPU if GPU unavailable
+
+### Append Mode ID Restart Issue (May 30, 2025)
+- **Identified Issue**: When using `--append` flag, sample IDs restart at S1 instead of continuing from the last ID
+- **Root Cause**: `get_last_id()` function in `utils/huggingface.py` fails with SplitInfo mismatch error
+- **Impact**: New appended samples have duplicate IDs with existing data
+- **Note**: Speaker IDs work correctly and maintain unique identifiers across append operations
 
 ## Architecture
 

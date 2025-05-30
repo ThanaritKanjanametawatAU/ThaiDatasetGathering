@@ -48,9 +48,16 @@ class AudioEnhancer:
         },
         'aggressive': {
             'skip': False,
-            'denoiser_ratio': 0.01,  # Lower = more denoising
-            'spectral_ratio': 0.7,
-            'passes': 3
+            'denoiser_ratio': 0.005,  # Lower = more denoising (was 0.01)
+            'spectral_ratio': 0.8,    # Higher = more spectral gating (was 0.7)
+            'passes': 4               # More passes for better cleaning (was 3)
+        },
+        'ultra_aggressive': {
+            'skip': False,
+            'denoiser_ratio': 0.0,    # Full wet signal (maximum denoising)
+            'spectral_ratio': 0.9,    # Very high spectral gating
+            'passes': 5,              # Maximum passes
+            'preserve_ratio': 0.5     # Mix 50% original to prevent over-processing
         },
         'secondary_speaker': {
             'skip': False,
@@ -197,18 +204,20 @@ class AudioEnhancer:
                 snr_estimate = float('inf')
                 
             # If variance is high, assume some noise present
-            if variance > 0.1 and snr_estimate > 30:
-                snr_estimate = 25  # Cap it to ensure processing
+            if variance > 0.05 and snr_estimate > 30:  # More sensitive (was 0.1)
+                snr_estimate = 20  # Lower cap to ensure more processing (was 25)
             
             # Categorize noise level (more sensitive)
-            if snr_estimate > self.clean_threshold_snr:
+            if snr_estimate > 40:  # Much higher threshold for "clean" (was 30)
                 level = 'clean'
-            elif snr_estimate > 15:
+            elif snr_estimate > 20:  # Higher threshold (was 15)
                 level = 'mild'
-            elif snr_estimate > 5:
+            elif snr_estimate > 10:  # Higher threshold (was 5)
                 level = 'moderate'
-            else:
+            elif snr_estimate > 0:
                 level = 'aggressive'
+            else:
+                level = 'ultra_aggressive'  # Use ultra for very noisy audio
             
             assessment_time = time.time() - start_time
             logger.debug(f"Noise assessment took {assessment_time:.3f}s, level: {level}, SNR: {snr_estimate:.1f}dB")
