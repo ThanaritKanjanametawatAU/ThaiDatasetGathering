@@ -31,11 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed import ordering issues
 - Removed unused imports in processors (time, os, json, Path)
 - Removed duplicate methods in base_processor.py (_initialize_audio_enhancer, _apply_noise_reduction)
-
-### Known Issues
-- Append mode IDs restart at S1 instead of continuing from last ID
-  - Root cause: `get_last_id()` function fails with SplitInfo mismatch error
-  - Speaker IDs work correctly across append operations
+- Fixed append mode ID restart issue by implementing parquet-based get_last_id
+  - New approach reads parquet files directly from HuggingFace to avoid SplitInfo mismatch
+  - Falls back to existing load_dataset approach if parquet reading fails
+  - Ensures continuous ID numbering across append operations
 
 ## [2.3.0] - 2025-01-29
 

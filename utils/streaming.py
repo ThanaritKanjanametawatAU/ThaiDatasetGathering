@@ -123,7 +123,7 @@ class StreamingUploader:
                 "transcript": Value("string"),
                 "length": Value("float32"),
                 "dataset_name": Value("string"),
-                "confidence_score": Value("float64")
+                "confidence_score": Value("float32")  # Changed from float64 to float32
             })
             
             # Clean samples - remove any fields not in the schema

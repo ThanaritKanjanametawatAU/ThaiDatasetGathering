@@ -150,11 +150,14 @@ The project has been updated to use HuggingFace's native audio format for better
   - GPU acceleration support
   - Automatic fallback to CPU if GPU unavailable
 
-### Append Mode ID Restart Issue (May 30, 2025)
-- **Identified Issue**: When using `--append` flag, sample IDs restart at S1 instead of continuing from the last ID
-- **Root Cause**: `get_last_id()` function in `utils/huggingface.py` fails with SplitInfo mismatch error
-- **Impact**: New appended samples have duplicate IDs with existing data
-- **Note**: Speaker IDs work correctly and maintain unique identifiers across append operations
+### Append Mode ID Fix (May 30, 2025)
+- **Fixed**: Resolved issue where sample IDs would restart at S1 when using `--append` flag
+- **Solution**: Implemented parquet-based `get_last_id()` function that:
+  - Reads parquet files directly from HuggingFace using HfApi
+  - Avoids SplitInfo mismatch errors from cached metadata
+  - Falls back to original load_dataset approach if parquet reading fails
+  - Ensures continuous ID numbering across append operations
+- **Result**: New appended samples now correctly continue from the last existing ID
 
 ## Architecture
 

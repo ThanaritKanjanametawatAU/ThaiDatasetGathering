@@ -103,7 +103,7 @@ class TestHuggingFaceSchemaComplete(unittest.TestCase):
             "transcript": Value("string"),
             "length": Value("float32"),
             "dataset_name": Value("string"),
-            "confidence_score": Value("float64")
+            "confidence_score": Value("float32")
         })
         
         # Create dataset with sample data
@@ -127,7 +127,7 @@ class TestHuggingFaceSchemaComplete(unittest.TestCase):
                 "transcript": Value("string"),
                 "length": Value("float32"),
                 "dataset_name": Value("string"),
-                "confidence_score": Value("float64")
+                "confidence_score": Value("float32")
             })
             
             dataset = Dataset.from_list([self.sample_data], features=features)

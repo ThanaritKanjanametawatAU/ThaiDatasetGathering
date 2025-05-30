@@ -546,10 +546,25 @@ class MetricsCollector:
         Args:
             filepath: Path to save JSON file
         """
+        def convert_numpy_types(obj):
+            """Convert numpy types to Python native types for JSON serialization."""
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, dict):
+                return {key: convert_numpy_types(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy_types(item) for item in obj]
+            else:
+                return obj
+        
         data = {
-            "samples": self.sample_metrics,
-            "summary": self.get_summary_statistics(),
-            "trends": self.calculate_trends(),
+            "samples": convert_numpy_types(self.sample_metrics),
+            "summary": convert_numpy_types(self.get_summary_statistics()),
+            "trends": convert_numpy_types(self.calculate_trends()),
             "timestamp": datetime.now().isoformat()
         }
         
