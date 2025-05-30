@@ -456,6 +456,7 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
     
     # Process each dataset
     total_samples = 0
+    total_duration_seconds = 0  # Track total duration across all datasets
     batch_buffer = []
     
     for dataset_name in dataset_names:
@@ -504,6 +505,7 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
             
             # Process all splits in streaming mode
             sample_count = 0
+            dataset_duration_seconds = 0  # Track duration for this dataset
             for sample in processor.process_all_splits(
                 checkpoint=checkpoint_file,
                 sample_mode=args.sample,
@@ -610,6 +612,11 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 
                 sample_count += 1
                 total_samples += 1
+                
+                # Accumulate duration
+                sample_duration = sample.get('length', 0) or 0
+                dataset_duration_seconds += sample_duration
+                total_duration_seconds += sample_duration
                 
                 # Upload batch when buffer is full
                 if len(batch_buffer) >= args.upload_batch_size:
