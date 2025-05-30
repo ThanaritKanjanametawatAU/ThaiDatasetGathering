@@ -9,7 +9,6 @@ import re
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, Iterator, Union, Tuple
 import time
-from pathlib import Path
 
 from utils.audio import is_valid_audio, get_audio_length, standardize_audio, get_audio_info
 from utils.logging import ProgressTracker, ProcessingLogger
@@ -141,113 +140,6 @@ class BaseProcessor(ABC):
                 self.logger.error(f"Failed to initialize STT pipeline: {e}")
                 self.enable_stt = False
 
-    def _initialize_audio_enhancer(self):
-        """Initialize the audio enhancement engine."""
-        try:
-            from processors.audio_enhancement import AudioEnhancer
-            from config import NOISE_REDUCTION_CONFIG
-            
-            # Merge default config with instance config
-            config = {**NOISE_REDUCTION_CONFIG}
-            config.update(self.noise_reduction_config)
-            
-            self.logger.info("Initializing audio enhancement engine...")
-            self.audio_enhancer = AudioEnhancer(
-                use_gpu=config.get('device', 'cuda') == 'cuda',
-                fallback_to_cpu=config.get('fallback_to_cpu', True),
-                clean_threshold_snr=config.get('clean_threshold_snr', 30.0),
-                target_pesq=config.get('target_pesq', 3.0),
-                target_stoi=config.get('target_stoi', 0.85)
-            )
-                
-            self.logger.info("Audio enhancement engine initialized successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize audio enhancer: {e}")
-            self.noise_reduction_enabled = False
-            self.audio_enhancer = None
-
-    def _apply_noise_reduction(self, audio_data: bytes, sample_id: str) -> Optional[bytes]:
-        """
-        Apply noise reduction to audio data.
-        
-        Args:
-            audio_data: Audio data as bytes
-            sample_id: Sample identifier for logging
-            
-        Returns:
-            bytes or None: Enhanced audio data or None if enhancement failed
-        """
-        if not self.audio_enhancer:
-            return None
-            
-        try:
-            import soundfile as sf
-            import io
-            import numpy as np
-            
-            # Convert bytes to numpy array
-            buffer = io.BytesIO(audio_data)
-            audio_array, sample_rate = sf.read(buffer)
-            
-            # Apply enhancement with metadata
-            enhanced_array, metadata = self.audio_enhancer.enhance(
-                audio_array, sample_rate, return_metadata=True
-            )
-            
-            # Update statistics if we have the method
-            if hasattr(self, '_update_enhancement_stats'):
-                self._update_enhancement_stats(metadata)
-            
-            # Convert back to bytes
-            enhanced_buffer = io.BytesIO()
-            sf.write(enhanced_buffer, enhanced_array, sample_rate, format='WAV')
-            enhanced_buffer.seek(0)
-            
-            # Log enhancement results
-            if metadata.get('enhanced', False) and metadata.get('snr_improvement', 0) > 0:
-                self.logger.debug(
-                    f"Enhanced {sample_id}: Noise level: {metadata.get('noise_level', 'unknown')}, "
-                    f"SNR {metadata.get('snr_before', 0):.1f} → "
-                    f"{metadata.get('snr_after', 0):.1f} dB (+{metadata.get('snr_improvement', 0):.1f}dB) "
-                    f"in {metadata.get('processing_time', 0)*1000:.1f}ms using {metadata.get('engine_used', 'unknown')}"
-                )
-            elif not metadata.get('enhanced', True):
-                self.logger.debug(f"Skipped enhancement for {sample_id}: already clean")
-                
-            return enhanced_buffer.read()
-            
-        except Exception as e:
-            self.logger.error(f"Audio enhancement failed for {sample_id}: {e}")
-            self.enhancement_stats['enhancement_failures'] += 1
-            return None
-            
-    def _update_enhancement_stats(self, metadata: Dict[str, Any]):
-        """Update enhancement statistics."""
-        self.enhancement_stats['total_enhanced'] += 1
-        
-        # Update average SNR improvement
-        if 'snr_improvement' in metadata:
-            current_avg = self.enhancement_stats['average_snr_improvement']
-            n = self.enhancement_stats['total_enhanced']
-            self.enhancement_stats['average_snr_improvement'] = (
-                (current_avg * (n - 1) + metadata['snr_improvement']) / n
-            )
-            
-        # Update average processing time
-        if 'processing_time_ms' in metadata:
-            current_avg = self.enhancement_stats['average_processing_time']
-            n = self.enhancement_stats['total_enhanced']
-            self.enhancement_stats['average_processing_time'] = (
-                (current_avg * (n - 1) + metadata['processing_time_ms']) / n
-            )
-            
-        # Update noise types
-        if 'noise_types' in metadata:
-            for noise_type in metadata['noise_types']:
-                if noise_type not in self.enhancement_stats['noise_types_found']:
-                    self.enhancement_stats['noise_types_found'][noise_type] = 0
-                self.enhancement_stats['noise_types_found'][noise_type] += 1
                 
     def _apply_noise_reduction_with_metadata(self, audio_data: bytes, sample_id: str) -> Optional[Tuple[bytes, Dict[str, Any]]]:
         """
@@ -1601,3 +1493,20 @@ class BaseProcessor(ABC):
             Dict[str, Any]: Additional fields to include in processed sample
         """
         return {}
+    
+    def _save_processing_checkpoint(self, processed_count: int, current_index: int, processed_ids: set) -> None:
+        """
+        Save processing checkpoint.
+
+        Args:
+            processed_count: Number of processed samples
+            current_index: Current index for ID generation
+            processed_ids: Set of processed sample IDs
+        """
+        checkpoint_data = {
+            "processed_count": processed_count,
+            "current_index": current_index,
+            "processed_ids": list(processed_ids)
+        }
+
+        self.save_checkpoint(checkpoint_data)
