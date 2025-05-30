@@ -6,13 +6,15 @@ project.
 import os
 import logging
 from typing import Optional, Dict, Any, Iterable
+import tempfile
+import pandas as pd
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
 try:
     from datasets import Dataset, Audio, load_dataset, Features, Value
-    from huggingface_hub import login
+    from huggingface_hub import login, HfApi
 except ImportError:
     logger.error(
         "Required Huggingface libraries not installed. "
@@ -101,7 +103,7 @@ def create_hf_dataset(
                 "transcript": Value("string"),
                 "length": Value("float32"),
                 "dataset_name": Value("string"),
-                "confidence_score": Value("float64")
+                "confidence_score": Value("float32")  # Changed from float64 to float32
             })
 
         # Create dataset with explicit features
@@ -203,7 +205,113 @@ def get_last_id(dataset_name: str) -> Optional[int]:
     Returns:
         int: Numeric part of the last ID or None if retrieval failed
     """
+    # Try new approach first: read parquet files directly
     try:
+        logger.info(
+            f"Attempting to get last ID from {dataset_name} using parquet file approach"
+        )
+        
+        # Initialize HfApi
+        api = HfApi()
+        
+        # List all parquet files in the dataset
+        try:
+            files = api.list_repo_files(
+                repo_id=dataset_name,
+                repo_type="dataset"
+            )
+            
+            # Filter for parquet files in the train split
+            parquet_files = [
+                f for f in files 
+                if f.endswith('.parquet') and 'train' in f
+            ]
+            
+            if not parquet_files:
+                logger.warning(
+                    f"No parquet files found in {dataset_name}, "
+                    "falling back to load_dataset approach"
+                )
+                raise ValueError("No parquet files found")
+            
+            logger.info(f"Found {len(parquet_files)} parquet files to process")
+            
+            # Track max ID across all parquet files
+            max_id = 0
+            
+            # Process each parquet file
+            for parquet_file in parquet_files:
+                try:
+                    # Download parquet file to temporary location
+                    with tempfile.NamedTemporaryFile(suffix='.parquet') as tmp_file:
+                        # Download the file
+                        file_path = api.hf_hub_download(
+                            repo_id=dataset_name,
+                            filename=parquet_file,
+                            repo_type="dataset",
+                            local_dir=tempfile.gettempdir(),
+                            force_download=True
+                        )
+                        
+                        # Read parquet file
+                        df = pd.read_parquet(file_path)
+                        
+                        # Check if ID column exists
+                        if 'ID' not in df.columns:
+                            logger.warning(
+                                f"ID column not found in {parquet_file}, skipping"
+                            )
+                            continue
+                        
+                        # Extract numeric IDs
+                        for id_str in df['ID']:
+                            if (
+                                id_str 
+                                and isinstance(id_str, str) 
+                                and id_str.startswith('S') 
+                                and id_str[1:].isdigit()
+                            ):
+                                numeric_id = int(id_str[1:])
+                                max_id = max(max_id, numeric_id)
+                        
+                        # Clean up downloaded file
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                            
+                except Exception as e:
+                    logger.warning(
+                        f"Error processing parquet file {parquet_file}: {str(e)}"
+                    )
+                    continue
+            
+            if max_id > 0:
+                logger.info(
+                    f"Successfully found max ID {max_id} from parquet files"
+                )
+                return max_id
+            else:
+                logger.warning(
+                    "No valid IDs found in parquet files, "
+                    "falling back to load_dataset approach"
+                )
+                raise ValueError("No valid IDs found in parquet files")
+                
+        except Exception as e:
+            logger.warning(
+                f"Error with parquet approach: {str(e)}, "
+                "falling back to load_dataset approach"
+            )
+            
+    except Exception as e:
+        logger.warning(
+            f"Parquet approach failed: {str(e)}, "
+            "using fallback load_dataset approach"
+        )
+    
+    # Fallback to original approach using load_dataset
+    try:
+        logger.info("Using fallback load_dataset approach")
+        
         # Load dataset
         dataset = load_dataset(dataset_name, split="train")
 

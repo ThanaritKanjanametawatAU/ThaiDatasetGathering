@@ -94,7 +94,7 @@ class TestHuggingFaceSchema(unittest.TestCase):
             "transcript": Value("string"),
             "length": Value("float32"),
             "dataset_name": Value("string"),
-            "confidence_score": Value("float64")
+            "confidence_score": Value("float32")
         })
         
         # Create dataset with our sample data

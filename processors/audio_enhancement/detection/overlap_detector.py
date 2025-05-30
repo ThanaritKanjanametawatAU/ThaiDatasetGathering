@@ -13,6 +13,7 @@ import librosa
 
 # Optional imports
 try:
+    import torch
     from pyannote.audio import Inference
     from pyannote.audio.pipelines import SpeakerDiarization
     from pyannote.audio import Model as PyannoteModel
@@ -141,6 +142,11 @@ class OverlapDetector:
             return []
         
         try:
+            # Check if torch is available
+            if not PYANNOTE_AVAILABLE:
+                logger.debug("Pyannote/torch not available for diarization")
+                return []
+                
             # Run diarization
             diarization = self.diarization_pipeline({
                 "waveform": torch.from_numpy(audio).unsqueeze(0),
