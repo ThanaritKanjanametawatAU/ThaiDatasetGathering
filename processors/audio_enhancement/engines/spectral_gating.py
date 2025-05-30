@@ -176,8 +176,8 @@ class SpectralGatingEngine:
         phase = np.angle(stft)
         
         # Estimate noise floor
-        # Use bottom 20% of magnitude values as noise estimate
-        noise_floor = np.percentile(magnitude, 20, axis=1, keepdims=True)
+        # Use bottom 30% of magnitude values as noise estimate (more aggressive)
+        noise_floor = np.percentile(magnitude, 30, axis=1, keepdims=True)
         
         # Create gate mask
         # Frequencies below gate_freq get more aggressive gating
@@ -186,8 +186,8 @@ class SpectralGatingEngine:
         if len(gate_idx) > 0:
             freq_mask[gate_idx] = 0.5  # More aggressive below gate frequency
             
-        # Apply spectral gate
-        gate_threshold = noise_floor * 2.0  # Gate at 2x noise floor
+        # Apply spectral gate (more aggressive)
+        gate_threshold = noise_floor * 3.0  # Gate at 3x noise floor (was 2.0)
         gate_mask = magnitude > gate_threshold
         
         # Smooth the mask to avoid artifacts
