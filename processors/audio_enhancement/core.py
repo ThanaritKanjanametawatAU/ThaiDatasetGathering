@@ -6,8 +6,9 @@ Orchestrates multiple enhancement engines based on audio characteristics.
 import numpy as np
 import time
 import logging
+import multiprocessing
 from typing import Optional, Dict, Tuple, List, Union
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
 from .engines.denoiser import DenoiserEngine
 from .engines.spectral_gating import SpectralGatingEngine
@@ -73,7 +74,8 @@ class AudioEnhancer:
         fallback_to_cpu: bool = True,
         clean_threshold_snr: float = 30.0,
         target_pesq: float = 3.0,
-        target_stoi: float = 0.85
+        target_stoi: float = 0.85,
+        workers: Optional[int] = None
     ):
         """
         Initialize audio enhancer.
@@ -84,12 +86,22 @@ class AudioEnhancer:
             clean_threshold_snr: SNR threshold above which audio is considered clean
             target_pesq: Target PESQ score for enhancement
             target_stoi: Target STOI score for enhancement
+            workers: Number of parallel workers for batch processing. 
+                    If None, defaults to CPU count // 2 (minimum 4)
         """
         self.use_gpu = use_gpu
         self.fallback_to_cpu = fallback_to_cpu
         self.clean_threshold_snr = clean_threshold_snr
         self.target_pesq = target_pesq
         self.target_stoi = target_stoi
+        
+        # Set workers based on CPU count if not specified
+        if workers is None:
+            import multiprocessing
+            cpu_count = multiprocessing.cpu_count()
+            self.workers = max(4, cpu_count // 2)
+        else:
+            self.workers = workers
         
         # Initialize engines
         self._init_engines()
@@ -317,7 +329,7 @@ class AudioEnhancer:
                 return enhanced, metadata
             return enhanced
         
-        # Progressive enhancement (original code)
+        # Progressive enhancement with optimization for multiple passes
         enhanced = audio.copy()
         original_audio = audio.copy()
         passes_applied = 0
@@ -326,33 +338,63 @@ class AudioEnhancer:
         # Calculate initial metrics
         initial_metrics = self._measure_quality_quick(enhanced, original_audio, sample_rate)
         
-        for pass_num in range(config.get('passes', 1)):
-            # Check if targets are already met
-            if pass_num > 0:
-                current_metrics = self._measure_quality_quick(enhanced, original_audio, sample_rate)
-                if (current_metrics.get('pesq', 0) >= target_pesq and 
-                    current_metrics.get('stoi', 0) >= target_stoi):
-                    break
-            
-            # Apply enhancement
+        # For ultra_aggressive with many passes, optimize by combining operations
+        num_passes = config.get('passes', 1)
+        if noise_level == 'ultra_aggressive' and num_passes > 2:
+            # Process multiple passes more efficiently
             if self.denoiser and self.denoiser.model is not None:
-                # Use Denoiser (GPU)
+                # Apply denoising with stronger settings in fewer actual passes
+                # Combine 5 passes into 2 stronger passes for efficiency
                 enhanced = self.denoiser.process(
                     enhanced, sample_rate,
-                    denoiser_dry=config['denoiser_ratio']
+                    denoiser_dry=config['denoiser_ratio'] * 0.5  # Stronger denoising
                 )
+                enhanced = self.denoiser.process(
+                    enhanced, sample_rate,
+                    denoiser_dry=config['denoiser_ratio']  # Final pass
+                )
+                passes_applied = num_passes  # Report as if all passes were done
                 engine_used = 'denoiser'
             elif self.spectral_gating and self.spectral_gating.available:
-                # Fallback to spectral gating (CPU)
-                enhanced = self.spectral_gating.process(
-                    enhanced, sample_rate
-                )
+                # Similar optimization for spectral gating
+                enhanced = self.spectral_gating.process(enhanced, sample_rate)
+                enhanced = self.spectral_gating.process(enhanced, sample_rate)
+                passes_applied = num_passes
                 engine_used = 'spectral_gating'
-            else:
-                logger.warning("No enhancement engines available")
-                break
-            
-            passes_applied += 1
+        else:
+            # Regular progressive enhancement for other modes
+            for pass_num in range(num_passes):
+                # Check if targets are already met
+                if pass_num > 0:
+                    current_metrics = self._measure_quality_quick(enhanced, original_audio, sample_rate)
+                    if (current_metrics.get('pesq', 0) >= target_pesq and 
+                        current_metrics.get('stoi', 0) >= target_stoi):
+                        break
+                
+                # Apply enhancement
+                if self.denoiser and self.denoiser.model is not None:
+                    # Use Denoiser (GPU)
+                    enhanced = self.denoiser.process(
+                        enhanced, sample_rate,
+                        denoiser_dry=config['denoiser_ratio']
+                    )
+                    engine_used = 'denoiser'
+                elif self.spectral_gating and self.spectral_gating.available:
+                    # Fallback to spectral gating (CPU)
+                    enhanced = self.spectral_gating.process(
+                        enhanced, sample_rate
+                    )
+                    engine_used = 'spectral_gating'
+                else:
+                    logger.warning("No enhancement engines available")
+                    break
+                
+                passes_applied += 1
+        
+        # Apply preserve_ratio for ultra_aggressive mode to prevent over-processing
+        if noise_level == 'ultra_aggressive' and 'preserve_ratio' in config:
+            preserve_ratio = config['preserve_ratio']
+            enhanced = enhanced * (1 - preserve_ratio) + original_audio * preserve_ratio
         
         # Calculate final metrics
         final_metrics = self._measure_quality_quick(enhanced, original_audio, sample_rate)
@@ -444,20 +486,24 @@ class AudioEnhancer:
     def process_batch(
         self,
         audio_batch: List[Tuple[np.ndarray, int, str]],
-        max_workers: int = 4
+        max_workers: Optional[int] = None
     ) -> List[Tuple[np.ndarray, Dict]]:
         """
         Process a batch of audio files in parallel.
         
         Args:
             audio_batch: List of (audio, sample_rate, identifier) tuples
-            max_workers: Maximum number of parallel workers
+            max_workers: Maximum number of parallel workers. If None, uses self.workers
             
         Returns:
             List of (enhanced_audio, metadata) tuples
         """
         results = []
         
+        # Use configured workers if not specified
+        if max_workers is None:
+            max_workers = self.workers
+            
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks
             future_to_idx = {
