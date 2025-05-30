@@ -229,7 +229,7 @@ NOISE_REDUCTION_CONFIG = {
         "max_snr_improvement": 10,    # Maximum dB improvement
         "min_pesq": 3.0,              # Minimum PESQ score
         "min_stoi": 0.85,             # Minimum STOI score
-        "min_speaker_similarity": 0.95 # Minimum speaker preservation
+        "min_speaker_similarity": 0.95  # Minimum speaker preservation
     },
     "processing": {
         "batch_size": 32,             # GPU batch size
@@ -247,7 +247,7 @@ NOISE_REDUCTION_CONFIG = {
     },
     "metadata_fields": [
         "original_snr",
-        "enhanced_snr", 
+        "enhanced_snr",
         "snr_improvement",
         "enhancement_level",
         "processing_time_ms",
