@@ -192,10 +192,8 @@ venv.bak/
 main.sh
 
 # Debug and analysis scripts (temporary)
-debug_*.py
-analyze_*.py
-check_*.py
-verify_*.py
+scripts/debug/
+scripts/analysis/
 test_enhancement.sh
 test_final_verification.sh
 
