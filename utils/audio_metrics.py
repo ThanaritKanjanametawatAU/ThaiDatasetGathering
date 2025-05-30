@@ -41,6 +41,10 @@ def calculate_snr(clean: np.ndarray, noisy: np.ndarray) -> float:
     clean = clean[:min_len]
     noisy = noisy[:min_len]
     
+    # Check if signals are identical or nearly identical
+    if np.allclose(clean, noisy, rtol=1e-9):
+        return 40.0  # 40 dB represents very clean signal
+    
     # Calculate noise as difference
     noise = noisy - clean
     
@@ -50,12 +54,13 @@ def calculate_snr(clean: np.ndarray, noisy: np.ndarray) -> float:
     
     # Avoid log of zero
     if noise_power < 1e-10:
-        return float('inf')
+        return 40.0  # Cap at 40 dB instead of infinity
     
     # SNR in dB
     snr_db = 10 * np.log10(signal_power / noise_power)
     
-    return float(snr_db)
+    # Cap at reasonable maximum
+    return float(min(snr_db, 40.0))
 
 
 def calculate_pesq(
