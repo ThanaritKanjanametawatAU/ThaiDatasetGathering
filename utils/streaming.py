@@ -165,8 +165,137 @@ class StreamingUploader:
                 os.remove(temp_path)
             return False, shard_filename
     
-    def upload_dataset_card(self, dataset_info: Dict[str, Any]):
+    def _read_existing_dataset_card(self) -> Optional[str]:
+        """
+        Read the existing dataset card from the repository.
+        
+        Returns:
+            The existing README content, or None if not found
+        """
+        try:
+            # Download the existing README.md file
+            from huggingface_hub import hf_hub_download
+            readme_path = hf_hub_download(
+                repo_id=self.repo_id,
+                filename="README.md",
+                repo_type="dataset",
+                token=self.token
+            )
+            
+            with open(readme_path, 'r') as f:
+                content = f.read()
+            
+            return content
+        except Exception as e:
+            logger.info(f"No existing dataset card found: {str(e)}")
+            return None
+    
+    def _parse_existing_stats(self, readme_content: str) -> Dict[str, Any]:
+        """
+        Parse existing statistics from a dataset card.
+        
+        Args:
+            readme_content: The README.md content
+            
+        Returns:
+            Dict with existing statistics
+        """
+        stats = {
+            'total_samples': 0,
+            'total_duration_hours': 0.0,
+            'existing_datasets': []
+        }
+        
+        if not readme_content:
+            return stats
+        
+        lines = readme_content.split('\n')
+        
+        for line in lines:
+            # Parse num_examples from YAML header
+            if "num_examples:" in line:
+                try:
+                    stats['total_samples'] = int(line.split(':')[1].strip())
+                except ValueError:
+                    pass
+            
+            # Parse total samples from markdown
+            elif "Total samples**:" in line:
+                try:
+                    sample_str = line.split('**:')[1].strip().replace(',', '')
+                    stats['total_samples'] = int(sample_str)
+                except ValueError:
+                    pass
+            
+            # Parse total duration from markdown
+            elif "Total duration**:" in line:
+                try:
+                    duration_str = line.split('**:')[1].strip().split()[0]
+                    stats['total_duration_hours'] = float(duration_str)
+                except ValueError:
+                    pass
+            
+            # Parse existing dataset names
+            elif line.strip().startswith("1. **") or line.strip().startswith("2. **") or line.strip().startswith("3. **"):
+                if "**:" in line:
+                    try:
+                        dataset_name = line.split("**")[1]
+                        if dataset_name and dataset_name not in stats['existing_datasets']:
+                            stats['existing_datasets'].append(dataset_name)
+                    except IndexError:
+                        pass
+        
+        return stats
+    
+    def upload_dataset_card(self, dataset_info: Dict[str, Any], append_mode: Optional[bool] = None):
         """Upload dataset card with metadata."""
+        if append_mode is None:
+            append_mode = self.append_mode
+        
+        # Initialize final stats
+        final_stats = {
+            'total_samples': dataset_info.get('total_samples', 0),
+            'total_duration_hours': dataset_info.get('total_duration_hours', 0),
+            'dataset_names': dataset_info.get('dataset_names', [])
+        }
+        
+        # If in append mode, read and merge existing stats
+        if append_mode:
+            existing_readme = self._read_existing_dataset_card()
+            if existing_readme:
+                existing_stats = self._parse_existing_stats(existing_readme)
+                
+                # Accumulate statistics
+                final_stats['total_samples'] += existing_stats['total_samples']
+                final_stats['total_duration_hours'] += existing_stats['total_duration_hours']
+                
+                # Merge dataset names
+                all_datasets = existing_stats['existing_datasets'] + final_stats['dataset_names']
+                # Remove duplicates while preserving order
+                seen = set()
+                final_stats['dataset_names'] = []
+                for dataset in all_datasets:
+                    if dataset not in seen:
+                        seen.add(dataset)
+                        final_stats['dataset_names'].append(dataset)
+        
+        # Generate source datasets description
+        sources_list = []
+        for i, dataset_name in enumerate(final_stats['dataset_names'], 1):
+            if dataset_name == "GigaSpeech2":
+                desc = "Large-scale multilingual speech corpus"
+            elif dataset_name == "ProcessedVoiceTH":
+                desc = "Thai voice dataset with processed audio"
+            elif dataset_name == "MozillaCommonVoice":
+                desc = "Mozilla Common Voice Thai dataset"
+            else:
+                desc = "Thai audio dataset"
+            sources_list.append(f"{i}. **{dataset_name}**: {desc}")
+        
+        sources_description = f"Processed {len(final_stats['dataset_names'])} datasets in streaming mode"
+        if sources_list:
+            sources_description += "\n\n## Source Datasets\n\n" + "\n".join(sources_list)
+        
         card_content = f"""---
 dataset_info:
   features:
@@ -190,7 +319,7 @@ dataset_info:
     dtype: float64
   splits:
   - name: train
-    num_examples: {dataset_info.get('total_samples', 0)}
+    num_examples: {final_stats['total_samples']}
   download_size: {dataset_info.get('download_size', 0)}
   dataset_size: {dataset_info.get('dataset_size', 0)}
 configs:
@@ -206,15 +335,15 @@ configs:
 
 ## Dataset Details
 
-- **Total samples**: {dataset_info.get('total_samples', 0):,}
-- **Total duration**: {dataset_info.get('total_duration_hours', 0):.2f} hours
+- **Total samples**: {final_stats['total_samples']:,}
+- **Total duration**: {final_stats['total_duration_hours']:.2f} hours
 - **Language**: Thai (th)
 - **Audio format**: 16kHz mono WAV
 - **Volume normalization**: -20dB
 
 ## Sources
 
-{dataset_info.get('sources_description', '')}
+{sources_description}
 
 ## Usage
 
