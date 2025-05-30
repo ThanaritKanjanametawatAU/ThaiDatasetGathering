@@ -18,13 +18,27 @@ You can Check the pushed dataset on https://huggingface.co/datasets/Thanarit/Tha
 
 ## Recent Updates (January 2025)
 
-### Code Cleanup and Refactoring (January 26, 2025)
+### Code Cleanup and Refactoring (January 30, 2025)
 - **Major Code Cleanup**: Following Power of 10 rules and ML pipeline best practices
-- **Reduced Code Duplication**: Extracted common streaming logic to `BaseProcessor._process_split_streaming_generic()`
-- **Improved File Organization**: Moved test files to tests/ directory, created scripts/ directory
-- **Fixed All Linting Issues**: ~100 issues resolved across the codebase
-- **Enhanced Documentation**: Added code quality section to README, created CHANGELOG.md
-- **Test Suite Updates**: Fixed failing tests, ensured all tests pass before deployment
+- **Reduced Code Duplication**: 
+  - Moved common `_save_processing_checkpoint` method to base processor
+  - Removed ~600 lines of duplicate code across processors
+  - Identified `_process_split_streaming_generic()` method for future refactoring
+- **Improved File Organization**: 
+  - Moved analysis scripts to `scripts/analysis/` directory
+  - Moved debug scripts to `scripts/debug/` directory  
+  - Root directory now only contains main.py and config.py
+- **Fixed All Linting Issues**: ~100 issues resolved including:
+  - Import ordering (E402)
+  - Whitespace issues (W293, W291)
+  - Line length (E501)
+  - Missing f-string placeholders (F541)
+  - Unused imports (F401)
+- **Enhanced Documentation**: 
+  - Added comprehensive code quality section to README
+  - Created CHANGELOG.md with detailed version history
+  - Added code_quality_report_2025.md documenting all improvements
+- **Test Suite Updates**: All tests pass (except one pre-existing test bug)
 
 ### Custom HuggingFace Repository Support
 - Added `--hf-repo` command-line flag to specify custom target repository

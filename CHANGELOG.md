@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Moved common `_save_processing_checkpoint` method to base processor
+- Created scripts directory structure for better organization
+
+### Changed
+- Refactored processors to reduce code duplication (~600 lines removed)
+- Moved analysis and debug scripts from root to scripts/ directory
+- Improved code organization following ML pipeline best practices
+
+### Fixed
+- Fixed ~100 linting issues across the codebase
+- Fixed trailing whitespace and blank line issues
+- Fixed missing placeholders in f-strings
+- Fixed import ordering issues
+- Removed unused imports in processors (time, os, json, Path)
+- Removed duplicate methods in base_processor.py (_initialize_audio_enhancer, _apply_noise_reduction)
+
 ## [2.3.0] - 2025-01-29
 
 ### Added

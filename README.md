@@ -382,6 +382,8 @@ ThaiDatasetGathering/
 ├── tests/                     # Test suite
 ├── examples/                  # Example scripts
 ├── scripts/                   # Utility scripts
+│   ├── analysis/             # Analysis scripts
+│   └── debug/                # Debug scripts
 ├── docs/                      # Documentation
 └── plan/                      # Project planning
 ```
