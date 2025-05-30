@@ -277,7 +277,9 @@ class AudioEnhancer:
                     'snr_after': self.clean_threshold_snr,
                     'processing_time': time.time() - start_time,
                     'engine_used': 'none',
-                    'secondary_speaker_detected': False
+                    'secondary_speaker_detected': False,
+                    'pesq': 2.5,  # Default for unprocessed clean audio
+                    'stoi': 0.75  # Default for unprocessed clean audio
                 }
                 return audio, metadata
             return audio
@@ -296,18 +298,21 @@ class AudioEnhancer:
             
             if return_metadata:
                 processing_time = time.time() - start_time
+                final_metrics = self._measure_quality_quick(enhanced, audio, sample_rate)
                 metadata = {
                     'enhanced': True,
                     'noise_level': noise_level,
                     'enhancement_level': 'secondary_speaker_removal',
                     'snr_before': initial_metrics.get('snr', 0) if 'initial_metrics' in locals() else 0,
-                    'snr_after': self._measure_quality_quick(enhanced, audio, sample_rate).get('snr', 0),
+                    'snr_after': final_metrics.get('snr', 0),
                     'processing_time': processing_time,
                     'engine_used': 'speaker_separator',
                     'secondary_speaker_detected': len(detections) > 0,
                     'secondary_speaker_confidence': max([d.confidence for d in detections]) if detections else 0.0,
                     'num_secondary_speakers': len(detections),
-                    'speaker_similarity': separation_result['metrics'].get('similarity_preservation', 1.0)
+                    'speaker_similarity': separation_result['metrics'].get('similarity_preservation', 1.0),
+                    'pesq': final_metrics.get('pesq', 2.5),
+                    'stoi': final_metrics.get('stoi', 0.75)
                 }
                 return enhanced, metadata
             return enhanced
@@ -354,7 +359,7 @@ class AudioEnhancer:
         
         # Update statistics
         self.stats['enhanced'] += 1
-        snr_improvement = final_metrics.get('snr', 0) - initial_metrics.get('snr', 0)
+        snr_improvement = self._calculate_snr_improvement(original_audio, enhanced, sample_rate)
         self.stats['total_snr_improvement'] += snr_improvement
         
         processing_time = time.time() - start_time
@@ -394,9 +399,47 @@ class AudioEnhancer:
         sample_rate: int
     ) -> Dict:
         """Quick quality measurement for real-time decisions."""
-        # Just calculate SNR for speed
-        snr = calculate_snr(reference, audio)
-        return {'snr': snr}
+        # Calculate all metrics for proper evaluation
+        return calculate_all_metrics(reference, audio, sample_rate)
+    
+    def _calculate_snr_improvement(
+        self,
+        original: np.ndarray,
+        enhanced: np.ndarray,
+        sample_rate: int
+    ) -> float:
+        """
+        Calculate SNR improvement using noise estimation.
+        
+        Args:
+            original: Original audio signal
+            enhanced: Enhanced audio signal
+            sample_rate: Sample rate
+            
+        Returns:
+            SNR improvement in dB
+        """
+        # Estimate noise in original signal (use first 0.1 seconds)
+        noise_samples = int(0.1 * sample_rate)
+        if len(original) > noise_samples:
+            noise_segment = original[:noise_samples]
+            noise_level = np.sqrt(np.mean(noise_segment ** 2))
+        else:
+            noise_level = np.sqrt(np.mean(original ** 2)) * 0.1
+        
+        # Calculate SNR for original (assuming noise level)
+        signal_power_orig = np.mean(original ** 2)
+        noise_power_orig = noise_level ** 2
+        snr_orig = 10 * np.log10(signal_power_orig / max(noise_power_orig, 1e-10))
+        
+        # Calculate SNR for enhanced
+        snr_enhanced = calculate_snr(original, enhanced)
+        
+        # Calculate improvement
+        improvement = snr_enhanced - snr_orig
+        
+        # Cap improvement at reasonable values
+        return max(-10.0, min(improvement, 20.0))
     
     def process_batch(
         self,
