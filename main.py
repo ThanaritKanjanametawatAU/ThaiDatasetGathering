@@ -434,9 +434,14 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
         from monitoring.metrics_collector import MetricsCollector
         from monitoring.dashboard import EnhancementDashboard
         
+        # Configure workers based on CPU count for better performance
+        import multiprocessing
+        cpu_count = multiprocessing.cpu_count()
+        
         enhancement_config = {
             'use_gpu': args.enhancement_gpu,
-            'fallback_to_cpu': True
+            'fallback_to_cpu': True,
+            'workers': max(4, cpu_count // 2)  # Use half of CPU cores, minimum 4
         }
         
         audio_enhancer = AudioEnhancer(**enhancement_config)
@@ -533,8 +538,8 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                             
                             # Process batch
                             enhanced_results = audio_enhancer.process_batch(
-                                audio_batch,
-                                max_workers=4
+                                audio_batch
+                                # Uses configured workers from AudioEnhancer
                             )
                             
                             # Update samples with enhanced audio
@@ -651,8 +656,8 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                     
                     # Process batch
                     enhanced_results = audio_enhancer.process_batch(
-                        audio_batch,
-                        max_workers=4
+                        audio_batch
+                        # Uses configured workers from AudioEnhancer
                     )
                     
                     # Update samples with enhanced audio
@@ -731,8 +736,8 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
             ]
             
             enhanced_results = audio_enhancer.process_batch(
-                audio_batch,
-                max_workers=4
+                audio_batch
+                # Uses configured workers from AudioEnhancer
             )
             
             for sample_to_enhance, (enhanced_audio, metadata) in zip(enhancement_buffer, enhanced_results):
