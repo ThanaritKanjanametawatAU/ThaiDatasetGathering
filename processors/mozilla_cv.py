@@ -2,11 +2,8 @@
 Processor for the Mozilla Common Voice dataset.
 """
 
-import os
 import logging
 from typing import Optional, Dict, Any, List, Iterator
-import json
-import time
 
 from processors.base_processor import BaseProcessor, NetworkError, ValidationError
 from utils.audio import get_audio_length, is_valid_audio
@@ -485,22 +482,6 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
         
         return sample
 
-    def _save_processing_checkpoint(self, processed_count: int, current_index: int, processed_ids: set) -> None:
-        """
-        Save processing checkpoint.
-
-        Args:
-            processed_count: Number of processed samples
-            current_index: Current index for ID generation
-            processed_ids: Set of processed sample IDs
-        """
-        checkpoint_data = {
-            "processed_count": processed_count,
-            "current_index": current_index,
-            "processed_ids": list(processed_ids)
-        }
-
-        self.save_checkpoint(checkpoint_data)
 
     def get_dataset_info(self) -> Dict[str, Any]:
         """
