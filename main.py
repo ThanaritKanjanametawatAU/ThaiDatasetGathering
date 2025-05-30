@@ -704,7 +704,8 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 
                 embedding_buffer = []  # Clear buffer for next dataset
             
-            logger.info(f"Completed {dataset_name}: {sample_count} samples")
+            dataset_duration_hours = dataset_duration_seconds / 3600.0
+            logger.info(f"Completed {dataset_name}: {sample_count} samples, {dataset_duration_hours:.2f} hours")
             
         except Exception as e:
             logger.error(f"Error processing {dataset_name} in streaming mode: {str(e)}")
@@ -791,16 +792,18 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
     
     # Upload dataset card
     if uploader:
+        total_duration_hours = total_duration_seconds / 3600.0
         dataset_info = {
             "name": TARGET_DATASET["name"],
             "description": TARGET_DATASET["description"],
             "total_samples": total_samples,
-            "total_duration_hours": 0,  # Would need to track this
-            "sources_description": f"Processed {len(dataset_names)} datasets in streaming mode"
+            "total_duration_hours": total_duration_hours,
+            "sources_description": f"Processed {len(dataset_names)} datasets in streaming mode",
+            "dataset_names": dataset_names
         }
         uploader.upload_dataset_card(dataset_info)
     
-    logger.info(f"Streaming processing completed: {total_samples} total samples")
+    logger.info(f"Streaming processing completed: {total_samples} total samples, {total_duration_hours:.2f} hours")
     return EXIT_CODES["SUCCESS"]
 
 
