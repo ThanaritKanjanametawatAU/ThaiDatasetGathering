@@ -5,6 +5,7 @@ This module provides functionality to extract speaker embeddings from audio
 and cluster them to identify unique speakers across the dataset.
 """
 
+import os
 import torch
 import numpy as np
 from pyannote.audio import Model, Inference
@@ -13,7 +14,6 @@ from typing import List, Dict, Optional, Tuple
 import h5py
 import logging
 import json
-import os
 import librosa
 from sklearn.cluster import DBSCAN, AgglomerativeClustering
 from sklearn.metrics import pairwise_distances
@@ -205,36 +205,39 @@ class SpeakerIdentification:
         # Normalize embeddings for cosine similarity
         normalized_embeddings = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
         
+        # Calculate mean similarity for adaptive thresholds (used in multiple places)
+        similarities_matrix = 1 - pairwise_distances(normalized_embeddings, metric='cosine')
+        upper_triangle_indices = np.triu_indices_from(similarities_matrix, k=1)
+        mean_sim = np.mean(similarities_matrix[upper_triangle_indices])
+        
         # Use adaptive clustering based on batch size and similarity distribution
         # For Thai Voice dataset, we need more lenient parameters
-        # Force AgglomerativeClustering for all batch sizes due to HDBSCAN issues with diverse audio
-        if True:  # Always use AgglomerativeClustering
-            # Small batch - use Agglomerative Clustering
+        # For resume safety: Be very conservative with clustering to avoid merging different speakers
+        # User requirement: "classifying 2 different speakers as one is detrimental and fatal"
+        if len(embeddings) < 50:  # Small batch - use Agglomerative Clustering
             # This works better for small datasets with varying similarities
             
-            # First compute similarity matrix to determine appropriate threshold
-            cosine_distances = pairwise_distances(normalized_embeddings, metric='cosine')
-            similarities = 1 - cosine_distances
+            # Use pre-computed similarity matrix
+            cosine_distances = 1 - similarities_matrix
+            std_sim = np.std(similarities_matrix[upper_triangle_indices])
             
-            # Check if there are distinct groups
-            # Look at the distribution of similarities
-            upper_triangle = similarities[np.triu_indices_from(similarities, k=1)]
-            mean_sim = np.mean(upper_triangle)
-            std_sim = np.std(upper_triangle)
-            
-            # Adaptive distance threshold based on similarity distribution
-            # Adjusted for real-world diverse audio data
+            # Adaptive thresholds based on similarity distribution
+            # Balanced approach: avoid merging different speakers while allowing proper clustering
             if mean_sim > 0.95:
-                # Very high similarity - use very strict threshold
+                # Very high similarity - use strict threshold
                 distance_threshold = 0.1  # Corresponds to 0.9 minimum similarity
-            elif mean_sim > 0.8:
+            elif mean_sim > 0.85:
+                distance_threshold = 0.2  # Corresponds to 0.8 minimum similarity
+            elif mean_sim > 0.75:
                 distance_threshold = 0.3  # Corresponds to 0.7 minimum similarity
-            elif mean_sim > 0.6:
+            elif mean_sim > 0.65:
+                distance_threshold = 0.4  # Corresponds to 0.6 minimum similarity
+            elif mean_sim > 0.55:
                 distance_threshold = 0.5  # Corresponds to 0.5 minimum similarity
-            elif mean_sim > 0.4:
+            elif mean_sim > 0.45:
                 distance_threshold = 0.6  # Corresponds to 0.4 minimum similarity
             else:
-                # Very diverse audio - use lenient threshold
+                # Low similarity - use lenient threshold for clustering
                 distance_threshold = 0.7  # Corresponds to 0.3 minimum similarity
             
             clustering = AgglomerativeClustering(
@@ -289,10 +292,9 @@ class SpeakerIdentification:
         
         # Calculate and log similarity statistics
         if len(embeddings) < 50:  # For small batches
-            similarities_debug = 1 - cosine_distances
-            upper_tri = similarities_debug[np.triu_indices_from(similarities_debug, k=1)]
-            logger.info(f"Small batch clustering - Similarity stats: mean={np.mean(upper_tri):.3f}, "
-                       f"std={np.std(upper_tri):.3f}, min={np.min(upper_tri):.3f}, max={np.max(upper_tri):.3f}")
+            logger.info(f"Small batch clustering - Similarity stats: mean={mean_sim:.3f}, "
+                       f"std={std_sim:.3f}, min={np.min(similarities_matrix[upper_triangle_indices]):.3f}, "
+                       f"max={np.max(similarities_matrix[upper_triangle_indices]):.3f}")
         
         logger.info(f"Clustering found {len(unique_labels)} clusters and {noise_count} noise points "
                    f"from {len(embeddings)} samples")
@@ -314,13 +316,17 @@ class SpeakerIdentification:
                     max_sim_idx = np.argmax(similarities[0])
                     max_sim = similarities[0][max_sim_idx]
                     
-                    if max_sim > 0.4:  # Lower threshold for noise points
+                    # Balanced threshold to avoid false matches while allowing proper clustering
+                    # Use adaptive threshold based on mean similarity
+                    similarity_threshold = 0.7 if mean_sim < 0.6 else 0.8
+                    if max_sim > similarity_threshold:
                         # Assign to existing cluster
-                        speaker_id = self.existing_clusters.get(max_sim_idx + 1000, 
-                                                               f"SPK_{self.speaker_counter:05d}")
                         if max_sim_idx + 1000 not in self.existing_clusters:
-                            self.existing_clusters[max_sim_idx + 1000] = speaker_id
+                            speaker_id = f"SPK_{self.speaker_counter:05d}"
                             self.speaker_counter += 1
+                            self.existing_clusters[max_sim_idx + 1000] = speaker_id
+                        else:
+                            speaker_id = self.existing_clusters[max_sim_idx + 1000]
                     else:
                         # Create new speaker ID
                         speaker_id = f"SPK_{self.speaker_counter:05d}"
@@ -332,9 +338,11 @@ class SpeakerIdentification:
             else:
                 # Check if this label already has a speaker ID
                 if label not in self.existing_clusters:
-                    self.existing_clusters[label] = f"SPK_{self.speaker_counter:05d}"
+                    speaker_id = f"SPK_{self.speaker_counter:05d}"
                     self.speaker_counter += 1
-                speaker_id = self.existing_clusters[label]
+                    self.existing_clusters[label] = speaker_id
+                else:
+                    speaker_id = self.existing_clusters[label]
             
             speaker_ids.append(speaker_id)
         
@@ -344,6 +352,9 @@ class SpeakerIdentification:
         
         # Update model with new clusters
         self._update_model(normalized_embeddings, labels, None)
+        
+        # Save model to persist speaker counter
+        self.save_model()
         
         return speaker_ids
     
