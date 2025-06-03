@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 class StreamingUploader:
     """Handles streaming upload of dataset shards to Hugging Face."""
     
-    def __init__(self, repo_id: str, token: Optional[str] = None, private: bool = False, append_mode: bool = False):
+    def __init__(self, repo_id: str, token: Optional[str] = None, private: bool = False, 
+                 append_mode: bool = False, split: str = "train", checkpoint_path: Optional[str] = None):
         """
         Initialize streaming uploader.
         
@@ -28,14 +29,21 @@ class StreamingUploader:
             token: Hugging Face token
             private: Whether to make the dataset private
             append_mode: Whether to append to existing dataset (preserves existing shards)
+            split: Dataset split name (default: "train")
+            checkpoint_path: Path to checkpoint file for tracking uploads
         """
         self.repo_id = repo_id
         self.token = token
         self.private = private
         self.append_mode = append_mode
+        self.split = split
+        self.checkpoint_path = checkpoint_path
         self.api = HfApi(token=token)
         self.shard_num = 0
         self.total_samples = 0
+        self.uploaded_ids = set()  # Track uploaded sample IDs to prevent duplicates
+        self.current_batch = []  # Current batch of samples
+        self.batch_size = 1000  # Default batch size
         
         # Create repo if it doesn't exist
         try:
@@ -58,6 +66,14 @@ class StreamingUploader:
                 logger.info(f"Append mode: Starting from shard {self.shard_num:05d}")
             else:
                 logger.info("Append mode: No existing shards found, starting from shard 0")
+        else:
+            # Fresh mode - delete existing data files
+            logger.info("Fresh mode: Cleaning existing data files from repository")
+            self._clean_existing_data()
+        
+        # Load checkpoint if available
+        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
+            self._load_checkpoint()
     
     def _get_existing_shard_numbers(self) -> List[int]:
         """
@@ -92,6 +108,124 @@ class StreamingUploader:
             logger.warning(f"Error listing existing shards: {str(e)}. Starting from shard 0.")
             return []
     
+    def _load_checkpoint(self):
+        """Load checkpoint from disk."""
+        try:
+            with open(self.checkpoint_path, 'r') as f:
+                checkpoint = json.load(f)
+            
+            self.shard_num = checkpoint.get('shard_index', 0)
+            self.total_samples = checkpoint.get('samples_uploaded', 0)
+            self.uploaded_ids = set(checkpoint.get('uploaded_ids', []))
+            self.split = checkpoint.get('split', self.split)
+            
+            logger.info(f"Loaded checkpoint: {len(self.uploaded_ids)} samples already uploaded")
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint: {str(e)}")
+    
+    def _save_checkpoint(self):
+        """Save checkpoint to disk."""
+        if not self.checkpoint_path:
+            return
+        
+        checkpoint = {
+            'shard_index': self.shard_num,
+            'samples_uploaded': self.total_samples,
+            'uploaded_ids': list(self.uploaded_ids),
+            'split': self.split,
+            'dataset_name': self.repo_id
+        }
+        
+        # Atomic write with temporary file
+        temp_path = self.checkpoint_path + '.tmp'
+        try:
+            with open(temp_path, 'w') as f:
+                json.dump(checkpoint, f, indent=2)
+            # Atomic rename
+            os.replace(temp_path, self.checkpoint_path)
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint: {str(e)}")
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+    
+    def add_sample(self, sample: Dict[str, Any]):
+        """Add a sample to the upload queue, preventing duplicates."""
+        sample_id = sample.get('ID', str(self.total_samples))
+        
+        # Skip if already uploaded
+        if sample_id in self.uploaded_ids:
+            logger.debug(f"Skipping duplicate sample: {sample_id}")
+            return
+        
+        # Add to current batch
+        self.current_batch.append(sample)
+        
+        # If batch is full, upload it
+        if len(self.current_batch) >= self.batch_size:
+            self.flush()
+    
+    def flush(self):
+        """Upload current batch if not empty."""
+        if not self.current_batch:
+            return
+        
+        # Upload the batch
+        success, _ = self.upload_shard(self.current_batch, self.shard_num)
+        
+        if success:
+            # Track uploaded IDs
+            for sample in self.current_batch:
+                sample_id = sample.get('ID', str(self.total_samples))
+                self.uploaded_ids.add(sample_id)
+                self.total_samples += 1
+            
+            # Save checkpoint
+            self._save_checkpoint()
+            
+            # Prepare for next shard
+            self.shard_num += 1
+            self.current_batch = []
+        else:
+            logger.error("Failed to upload batch, keeping samples in queue")
+    
+    def _clean_existing_data(self):
+        """Delete existing data files from the repository for fresh mode."""
+        try:
+            # List all files in the repository
+            files = self.api.list_repo_files(
+                repo_id=self.repo_id,
+                repo_type="dataset"
+            )
+            
+            # Find data files to delete
+            files_to_delete = []
+            for file_path in files:
+                # Delete parquet files in data directory
+                if file_path.startswith("data/") and file_path.endswith(".parquet"):
+                    files_to_delete.append(file_path)
+            
+            # Delete files
+            if files_to_delete:
+                logger.info(f"Deleting {len(files_to_delete)} existing data files")
+                for file_path in files_to_delete:
+                    try:
+                        self.api.delete_file(
+                            path_in_repo=file_path,
+                            repo_id=self.repo_id,
+                            repo_type="dataset",
+                            commit_message=f"Clean data for fresh mode: {file_path}"
+                        )
+                        logger.debug(f"Deleted: {file_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete {file_path}: {str(e)}")
+                logger.info("Finished cleaning existing data files")
+            else:
+                logger.info("No existing data files to clean")
+                
+        except Exception as e:
+            logger.error(f"Error cleaning existing data: {str(e)}")
+            # Don't raise - allow process to continue even if cleanup fails
+    
     def upload_batch(self, samples: List[Dict[str, Any]], shard_num: Optional[int] = None) -> Tuple[bool, str]:
         """
         Upload a batch of samples as a parquet shard.
@@ -105,6 +239,23 @@ class StreamingUploader:
         """
         if not samples:
             return True, ""
+        
+        # Filter out already uploaded samples
+        filtered_samples = []
+        for sample in samples:
+            sample_id = sample.get('ID', str(self.total_samples))
+            if sample_id not in self.uploaded_ids:
+                filtered_samples.append(sample)
+                self.uploaded_ids.add(sample_id)
+            else:
+                logger.debug(f"Skipping duplicate sample in upload_batch: {sample_id}")
+        
+        # If all samples were duplicates, return success
+        if not filtered_samples:
+            logger.info(f"All {len(samples)} samples were duplicates, skipping upload")
+            return True, ""
+        
+        samples = filtered_samples
         
         if shard_num is None:
             shard_num = self.shard_num
@@ -137,13 +288,27 @@ class StreamingUploader:
             # The Audio feature will handle the conversion automatically
             dataset = Dataset.from_list(cleaned_samples, features=features)
             
-            # Save as parquet
-            dataset.to_parquet(temp_path)
+            # Save as parquet with compression for viewer compatibility
+            # Use pyarrow directly for better control
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+            
+            # Convert to arrow table
+            table = dataset.data.table if hasattr(dataset, 'data') else pa.Table.from_pandas(dataset.to_pandas())
+            
+            # Write with proper settings for HuggingFace viewer
+            pq.write_table(
+                table,
+                temp_path,
+                row_group_size=100,  # 100 rows per group for better streaming
+                compression='snappy'  # Good balance of speed and size
+            )
             
             # Upload to Hub
+            # Use split name in path
             upload_file(
                 path_or_fileobj=temp_path,
-                path_in_repo=f"data/train/{shard_filename}",
+                path_in_repo=f"data/{self.split}/{shard_filename}",
                 repo_id=self.repo_id,
                 repo_type="dataset",
                 token=self.token
@@ -155,6 +320,9 @@ class StreamingUploader:
             # Cleanup
             if os.path.exists(temp_path):
                 os.remove(temp_path)
+            
+            # Save checkpoint after successful upload
+            self._save_checkpoint()
             
             return True, shard_filename
             
@@ -508,11 +676,48 @@ def estimate_dataset_size(dataset_config: Dict[str, Any], sample_size: int = 100
 class StreamingBatchProcessor:
     """Process streaming datasets in batches with checkpoint support."""
     
-    def __init__(self, batch_size: int = 1000, checkpoint_dir: str = "checkpoints"):
+    def __init__(self, batch_size: int = 1000, checkpoint_dir: str = "checkpoints", 
+                 process_fn=None, checkpoint_path: Optional[str] = None):
         self.batch_size = batch_size
         self.checkpoint_dir = checkpoint_dir
+        self.checkpoint_path = checkpoint_path
+        self.process_fn = process_fn
         self.current_batch = []
         self.samples_processed = 0
+        self.processed_ids = set()  # Track processed IDs to prevent duplicates
+    
+    def add_sample(self, sample: Dict[str, Any]):
+        """Add a sample to the processing queue, preventing duplicates."""
+        sample_id = sample.get('ID', str(self.samples_processed))
+        
+        # Skip if already processed
+        if sample_id in self.processed_ids:
+            logger.debug(f"Skipping duplicate sample in processor: {sample_id}")
+            return
+        
+        # Add to current batch
+        self.current_batch.append(sample)
+        self.processed_ids.add(sample_id)
+        
+        # Process batch when full
+        if len(self.current_batch) >= self.batch_size:
+            self.flush()
+    
+    def flush(self):
+        """Process current batch if not empty."""
+        if not self.current_batch:
+            return
+        
+        # Process the batch if process_fn is provided
+        if self.process_fn:
+            processed_batch = self.process_fn(self.current_batch)
+            if processed_batch:
+                self.samples_processed += len(processed_batch)
+        else:
+            self.samples_processed += len(self.current_batch)
+        
+        # Clear the batch
+        self.current_batch = []
         
     def process_with_checkpoints(self, 
                                dataset_iterator: Iterator[Dict[str, Any]],
