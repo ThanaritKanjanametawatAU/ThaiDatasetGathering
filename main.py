@@ -378,21 +378,31 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
         # Determine target repository - use command-line arg if provided, otherwise use default
         target_repo = args.hf_repo if args.hf_repo else TARGET_DATASET["name"]
         
+        # When resuming, we should append to avoid overwriting existing data
+        append_mode = args.append or args.resume
+        
+        # Create checkpoint path for uploader
+        uploader_checkpoint_path = os.path.join("checkpoints", f"{target_repo.replace('/', '_')}_upload_checkpoint.json")
+        
         uploader = StreamingUploader(
             repo_id=target_repo,
             token=token,
             private=args.private,
-            append_mode=args.append
+            append_mode=append_mode,
+            checkpoint_path=uploader_checkpoint_path
         )
     
     # Track global sample ID
     start_id = 1
-    if args.append:
+    if args.append or args.resume:
         # Use the same target repository
         last_id = get_last_id(target_repo)
         if last_id is not None:
             start_id = last_id + 1
-            logger.info(f"Appending to existing dataset, starting from ID: S{start_id}")
+            if args.append:
+                logger.info(f"Appending to existing dataset, starting from ID: S{start_id}")
+            else:
+                logger.info(f"Resuming from checkpoint, continuing from ID: S{start_id}")
     
     current_id = start_id
     
@@ -417,7 +427,7 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
             'store_embeddings': args.store_embeddings,
             'embedding_path': os.path.join(args.output or '.', 'speaker_embeddings.h5'),
             'model_path': os.path.join(CHECKPOINT_DIR, 'speaker_model.json'),
-            'fresh': args.fresh  # Pass fresh flag to speaker identification
+            'fresh': args.fresh and not args.resume  # Don't reset speaker model when resuming
         }
         
         speaker_identifier = SpeakerIdentification(speaker_config)
@@ -458,6 +468,45 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 update_interval=10
             )
             logger.info("Started enhancement monitoring dashboard")
+    
+    # Helper function to check and upload batch
+    def check_and_upload_batch(processor=None, last_sample_id=None, force_process_embeddings=False):
+        nonlocal batch_buffer, embedding_buffer
+        
+        # CRITICAL FIX: Always process embeddings if we're about to upload
+        # This ensures speaker clustering happens on full batches, not individual samples
+        upload_will_trigger = len(batch_buffer) + len(embedding_buffer) >= args.upload_batch_size
+        
+        # Process any remaining embeddings before upload if forced or buffer is getting full
+        if speaker_identifier and embedding_buffer and \
+           (force_process_embeddings or upload_will_trigger):
+            logger.info(f"Processing speaker identification batch of {len(embedding_buffer)} samples before upload")
+            speaker_ids = speaker_identifier.process_batch(embedding_buffer)
+            for sample, speaker_id in zip(embedding_buffer, speaker_ids):
+                sample['speaker_id'] = speaker_id
+                batch_buffer.append(sample)
+            embedding_buffer = []
+        
+        if len(batch_buffer) >= args.upload_batch_size and uploader:
+            # Upload only the required batch size
+            upload_batch = batch_buffer[:args.upload_batch_size]
+            success, shard_name = uploader.upload_batch(upload_batch)
+            if not success:
+                logger.error(f"Failed to upload batch {shard_name}")
+                return False
+            
+            # Save checkpoint if processor provided
+            if processor and last_sample_id:
+                processor.save_streaming_checkpoint(
+                    shard_num=uploader.shard_num if uploader else 0,
+                    samples_processed=total_samples,
+                    last_sample_id=last_sample_id or upload_batch[-1]["ID"]
+                )
+            
+            # Keep any remaining samples
+            batch_buffer = batch_buffer[args.upload_batch_size:]
+            return True
+        return True
     
     # Process each dataset
     total_samples = 0
@@ -566,6 +615,16 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                             # Move enhanced samples to speaker identification
                             if speaker_identifier:
                                 embedding_buffer.extend(enhancement_buffer)
+                                
+                                # Check if we should process speaker IDs after adding enhanced samples
+                                # This ensures we process speaker IDs in batches, not individually
+                                if len(embedding_buffer) >= args.speaker_batch_size:
+                                    logger.info(f"Processing speaker identification batch of {len(embedding_buffer)} samples after enhancement")
+                                    speaker_ids = speaker_identifier.process_batch(embedding_buffer)
+                                    for sample, speaker_id in zip(embedding_buffer, speaker_ids):
+                                        sample['speaker_id'] = speaker_id
+                                        batch_buffer.append(sample)
+                                    embedding_buffer = []
                             else:
                                 # No speaker identification - assign IDs and add to batch buffer
                                 for enhanced_sample in enhancement_buffer:
@@ -587,12 +646,26 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                                     sample_to_enhance['speaker_id'] = f"SPK_{total_samples + 1:05d}"
                                     batch_buffer.append(sample_to_enhance)
                             enhancement_buffer = []
-                    
-                    # Skip normal flow as sample is in enhancement buffer
+                            
+                            # Check if we should process speaker IDs after fallback
+                            if speaker_identifier and len(embedding_buffer) >= args.speaker_batch_size:
+                                logger.info(f"Processing speaker identification batch of {len(embedding_buffer)} samples after enhancement fallback")
+                                speaker_ids = speaker_identifier.process_batch(embedding_buffer)
+                                for sample, speaker_id in zip(embedding_buffer, speaker_ids):
+                                    sample['speaker_id'] = speaker_id
+                                    batch_buffer.append(sample)
+                                embedding_buffer = []
+                            
+                            # Check if we should upload after processing enhancement batch
+                            if not check_and_upload_batch():
+                                return EXIT_CODES["UPLOAD_ERROR"]
+                
+                elif audio_enhancer:
+                    # Sample is still in enhancement buffer, skip rest of processing
                     continue
                 
-                # Handle speaker identification
-                if speaker_identifier:
+                # Handle speaker identification (only if not in enhancement buffer)
+                if speaker_identifier and not (audio_enhancer and len(enhancement_buffer) > 0):
                     # Add to embedding buffer for batch processing
                     embedding_buffer.append(sample)
                     
@@ -609,11 +682,16 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                             batch_buffer.append(sample)
                         
                         embedding_buffer = []
+                        
+                        # Check if we should upload after processing speaker batch
+                        if not check_and_upload_batch():
+                            return EXIT_CODES["UPLOAD_ERROR"]
                     # else: sample stays in embedding_buffer until batch is full or end of processing
-                else:
+                elif not speaker_identifier:
                     # No speaker identification - assign unique ID based on sample counter
                     sample['speaker_id'] = f"SPK_{total_samples + 1:05d}"
                     batch_buffer.append(sample)
+                # else: sample is being processed by speaker identification or audio enhancement
                 
                 sample_count += 1
                 total_samples += 1
@@ -623,22 +701,19 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 dataset_duration_seconds += sample_duration
                 total_duration_seconds += sample_duration
                 
-                # Upload batch when buffer is full
-                if len(batch_buffer) >= args.upload_batch_size:
-                    if uploader:
-                        success, shard_name = uploader.upload_batch(batch_buffer)
-                        if not success:
-                            logger.error(f"Failed to upload batch {shard_name}")
-                            return EXIT_CODES["UPLOAD_ERROR"]
-                    
-                    # Save checkpoint
-                    processor.save_streaming_checkpoint(
-                        shard_num=uploader.shard_num if uploader else 0,
-                        samples_processed=total_samples,
-                        last_sample_id=sample["ID"]
-                    )
-                    
-                    batch_buffer = []
+                # Only check upload after meaningful progress to ensure proper batching
+                # This prevents premature uploads that break speaker clustering
+                should_check_upload = (
+                    # Don't check too early to allow S1-S10 clustering
+                    (sample_count >= 50 and sample_count % 25 == 0) or
+                    # Always check if batch buffer is getting too full
+                    len(batch_buffer) >= args.upload_batch_size * 0.9
+                )
+                
+                if should_check_upload:
+                    # Upload batch when buffer is full
+                    if not check_and_upload_batch(processor, sample["ID"]):
+                        return EXIT_CODES["UPLOAD_ERROR"]
                 
                 # Log progress
                 if sample_count % 1000 == 0:
@@ -684,6 +759,16 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                     # Move enhanced samples to speaker identification
                     if speaker_identifier:
                         embedding_buffer.extend(enhancement_buffer)
+                        
+                        # Check if we should process speaker IDs after adding enhanced samples
+                        # This ensures we process speaker IDs in batches, not individually
+                        if len(embedding_buffer) >= args.speaker_batch_size:
+                            logger.info(f"Processing speaker identification batch of {len(embedding_buffer)} samples after final enhancement")
+                            speaker_ids = speaker_identifier.process_batch(embedding_buffer)
+                            for sample, speaker_id in zip(embedding_buffer, speaker_ids):
+                                sample['speaker_id'] = speaker_id
+                                batch_buffer.append(sample)
+                            embedding_buffer = []
                     else:
                         # No speaker identification - assign IDs and add to batch buffer
                         for enhanced_sample in enhancement_buffer:
@@ -715,6 +800,10 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                     batch_buffer.append(sample)
                 
                 embedding_buffer = []  # Clear buffer for next dataset
+            
+            # Force upload check at end of dataset to clear buffers
+            if not check_and_upload_batch(processor, f"S{current_id-1}", force_process_embeddings=True):
+                return EXIT_CODES["UPLOAD_ERROR"]
             
             dataset_duration_hours = dataset_duration_seconds / 3600.0
             logger.info(f"Completed {dataset_name}: {sample_count} samples, {dataset_duration_hours:.2f} hours")
@@ -779,9 +868,14 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
         for sample, speaker_id in zip(embedding_buffer, speaker_ids):
             sample['speaker_id'] = speaker_id
             batch_buffer.append(sample)
+        embedding_buffer = []
     
-    # Upload remaining samples
+    # Upload remaining samples with forced embedding processing
     if batch_buffer and uploader:
+        # Make sure any lingering embeddings are processed first
+        if speaker_identifier and embedding_buffer:
+            check_and_upload_batch(force_process_embeddings=True)
+        
         success, shard_name = uploader.upload_batch(batch_buffer)
         if not success:
             logger.error(f"Failed to upload final batch {shard_name}")
@@ -934,7 +1028,7 @@ def main() -> int:
             'store_embeddings': args.store_embeddings,
             'embedding_path': os.path.join(args.output or '.', 'speaker_embeddings.h5'),
             'model_path': os.path.join(CHECKPOINT_DIR, 'speaker_model.json'),
-            'fresh': args.fresh  # Pass fresh flag to speaker identification
+            'fresh': args.fresh and not args.resume  # Don't reset speaker model when resuming
         }
         
         speaker_identifier = SpeakerIdentification(speaker_config)
