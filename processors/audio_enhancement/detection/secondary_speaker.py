@@ -15,9 +15,6 @@ import logging
 from dataclasses import dataclass
 
 # Use existing speaker identification system
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
 from processors.speaker_identification import SpeakerIdentification
 
 logger = logging.getLogger(__name__)
@@ -111,11 +108,18 @@ class AdaptiveSecondaryDetection(SecondarySpeakerDetector):
         
         # Initialize speaker identification system
         try:
-            from config import SPEAKER_ID_CONFIG
             # Create a minimal config for speaker identification
-            speaker_config = SPEAKER_ID_CONFIG.copy()
-            speaker_config['store_embeddings'] = False
-            speaker_config['fresh'] = True
+            speaker_config = {
+                'model': 'pyannote/embedding',
+                'store_embeddings': False,
+                'fresh': True,
+                'clustering': {
+                    'algorithm': 'hdbscan',
+                    'min_cluster_size': 2,
+                    'min_samples': 1,
+                    'metric': 'cosine'
+                }
+            }
             self.speaker_id = SpeakerIdentification(speaker_config)
             self.has_speaker_id = True
         except Exception as e:
@@ -178,17 +182,39 @@ class AdaptiveSecondaryDetection(SecondarySpeakerDetector):
         """
         detections = []
         
-        # Extract main speaker profile from first second
-        main_speaker_segment = audio_array[:sample_rate]
-        try:
-            main_embedding = self.speaker_id.extract_embedding(main_speaker_segment, sample_rate)
-        except Exception as e:
-            logger.warning(f"Failed to extract main speaker embedding: {e}")
+        # Extract main speaker profile from multiple segments for better representation
+        # Use first 2 seconds and last 2 seconds to get better main speaker profile
+        profile_segments = []
+        
+        # First 2 seconds
+        if len(audio_array) > 2 * sample_rate:
+            profile_segments.append(audio_array[:2 * sample_rate])
+        else:
+            profile_segments.append(audio_array[:sample_rate])
+            
+        # Last 2 seconds
+        if len(audio_array) > 4 * sample_rate:
+            profile_segments.append(audio_array[-2 * sample_rate:])
+            
+        # Extract embeddings for profile segments
+        main_embeddings = []
+        for segment in profile_segments:
+            try:
+                embedding = self.speaker_id.extract_embedding(segment, sample_rate)
+                main_embeddings.append(embedding)
+            except Exception as e:
+                logger.debug(f"Failed to extract embedding: {e}")
+                
+        if not main_embeddings:
+            logger.warning("Failed to extract any main speaker embeddings")
             return detections
             
-        # Sliding window analysis
-        window_size = int(0.5 * sample_rate)  # 500ms windows
-        hop_size = int(0.1 * sample_rate)     # 100ms hop
+        # Average embeddings for better representation
+        main_embedding = np.mean(main_embeddings, axis=0)
+            
+        # Sliding window analysis with smaller windows for better granularity
+        window_size = int(0.3 * sample_rate)  # 300ms windows (was 500ms)
+        hop_size = int(0.05 * sample_rate)    # 50ms hop (was 100ms)
         
         for i in range(0, len(audio_array) - window_size, hop_size):
             segment = audio_array[i:i+window_size]

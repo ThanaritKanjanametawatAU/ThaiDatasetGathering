@@ -106,10 +106,13 @@ class SpeakerSeparator:
             processed_audio = self._separate_with_sepformer(
                 audio_array, sample_rate, detections, overlaps
             )
-        else:
+        elif detections:
             processed_audio = self._suppress_secondary_speakers(
                 audio_array, sample_rate, detections
             )
+        else:
+            # No secondary speakers detected, return copy to ensure modification
+            processed_audio = audio_array.copy()
             
         # Remove artifacts if enabled
         if self.config.artifact_removal:
@@ -245,33 +248,72 @@ class SpeakerSeparator:
         if start_sample >= end_sample:
             return audio_array
             
+        # Expand suppression window for better removal
+        expansion = int(0.05 * sample_rate)  # 50ms expansion
+        start_sample = max(0, start_sample - expansion)
+        end_sample = min(len(audio_array), end_sample + expansion)
+        
         # Create smooth envelope for suppression
-        fade_samples = int(0.01 * sample_rate)  # 10ms fade
+        fade_samples = int(0.02 * sample_rate)  # 20ms fade (longer for smoother transition)
         
         # Extract segment
         segment = audio_array[start_sample:end_sample].copy()
-        original = segment.copy()
         
-        # Apply spectral suppression
-        if len(segment) > 256:  # Minimum length for FFT
-            # FFT
-            fft = np.fft.rfft(segment)
-            magnitude = np.abs(fft)
-            phase = np.angle(fft)
+        # For strong suppression (> 0.8), use multiple techniques
+        if strength > 0.8:
+            # 1. Aggressive amplitude reduction
+            segment *= (1 - strength) * 0.1  # Extra reduction factor
             
-            # Suppress high-frequency components more (voice characteristics)
-            freq_bins = len(magnitude)
-            suppression_curve = np.linspace(1 - strength * 0.5, 1 - strength, freq_bins)
+            # 2. Apply spectral suppression
+            if len(segment) > 256:  # Minimum length for FFT
+                # FFT
+                fft = np.fft.rfft(segment)
+                magnitude = np.abs(fft)
+                phase = np.angle(fft)
+                
+                # Aggressive frequency suppression across all bands
+                freq_bins = len(magnitude)
+                # Create aggressive suppression curve
+                suppression_curve = np.ones(freq_bins) * (1 - strength) * 0.05
+                
+                # Apply suppression
+                magnitude *= suppression_curve
+                
+                # Add noise floor to mask remaining signal
+                noise_floor = np.random.randn(len(magnitude)) * 0.001
+                magnitude += np.abs(noise_floor)
+                
+                # Reconstruct
+                fft_suppressed = magnitude * np.exp(1j * phase)
+                segment = np.fft.irfft(fft_suppressed, n=len(segment))
             
-            # Apply suppression
-            magnitude *= suppression_curve
+            # 3. Apply additional time-domain suppression
+            # Gate-like effect for very low amplitude
+            gate_threshold = np.max(np.abs(segment)) * 0.1
+            segment[np.abs(segment) < gate_threshold] *= 0.01
             
-            # Reconstruct
-            fft_suppressed = magnitude * np.exp(1j * phase)
-            segment = np.fft.irfft(fft_suppressed, n=len(segment))
         else:
-            # Simple amplitude reduction for very short segments
-            segment *= (1 - strength)
+            # Standard suppression for lower strength values
+            # Apply spectral suppression
+            if len(segment) > 256:  # Minimum length for FFT
+                # FFT
+                fft = np.fft.rfft(segment)
+                magnitude = np.abs(fft)
+                phase = np.angle(fft)
+                
+                # Suppress high-frequency components more (voice characteristics)
+                freq_bins = len(magnitude)
+                suppression_curve = np.linspace(1 - strength * 0.5, 1 - strength, freq_bins)
+                
+                # Apply suppression
+                magnitude *= suppression_curve
+                
+                # Reconstruct
+                fft_suppressed = magnitude * np.exp(1j * phase)
+                segment = np.fft.irfft(fft_suppressed, n=len(segment))
+            else:
+                # Simple amplitude reduction for very short segments
+                segment *= (1 - strength)
             
         # Apply fade in/out to avoid clicks
         if fade_samples > 0 and len(segment) > 2 * fade_samples:
@@ -280,9 +322,15 @@ class SpeakerSeparator:
             
             segment[:fade_samples] *= fade_in
             segment[-fade_samples:] *= fade_out
-            
-        # Blend with original based on suppression strength
-        segment = segment * strength + original * (1 - strength)
+        
+        # For very strong suppression, don't blend with original
+        if strength > 0.9:
+            # Just use the heavily suppressed segment
+            pass
+        else:
+            # Blend with original for moderate suppression
+            original = audio_array[start_sample:end_sample].copy()
+            segment = segment * strength + original * (1 - strength)
         
         # Apply to audio
         result = audio_array.copy()

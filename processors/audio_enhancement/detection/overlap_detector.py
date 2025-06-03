@@ -148,8 +148,10 @@ class OverlapDetector:
                 return []
                 
             # Run diarization
+            # Convert to float32 to match expected dtype
+            audio_tensor = torch.from_numpy(audio.astype(np.float32)).unsqueeze(0)
             diarization = self.diarization_pipeline({
-                "waveform": torch.from_numpy(audio).unsqueeze(0),
+                "waveform": audio_tensor,
                 "sample_rate": sample_rate
             })
             

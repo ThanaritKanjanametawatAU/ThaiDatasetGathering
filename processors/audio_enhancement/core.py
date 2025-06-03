@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 from .engines.denoiser import DenoiserEngine
 from .engines.spectral_gating import SpectralGatingEngine
 from .speaker_separation import SpeakerSeparator, SeparationConfig
+from .simple_secondary_removal import SimpleSecondaryRemoval
 from utils.audio_metrics import (
     calculate_snr, calculate_pesq, calculate_stoi,
     calculate_spectral_distortion, calculate_speaker_similarity,
@@ -106,14 +107,25 @@ class AudioEnhancer:
         # Initialize engines
         self._init_engines()
         
-        # Initialize speaker separator
+        # Initialize speaker separator with stronger settings
         separation_config = SeparationConfig(
-            suppression_strength=0.6,
-            confidence_threshold=0.5,
+            suppression_strength=0.95,  # Much stronger suppression (was 0.6)
+            confidence_threshold=0.3,   # Lower threshold to detect more secondary speakers (was 0.5)
             preserve_main_speaker=True,
-            use_sepformer=False  # Start with False to avoid dependency issues
+            use_sepformer=False,  # Start with False to avoid dependency issues
+            min_duration=0.05,    # Detect shorter segments (was 0.1)
+            max_duration=10.0,    # Allow longer segments (was 5.0)
+            speaker_similarity_threshold=0.5,  # Lower threshold for more sensitive detection (was 0.7)
+            detection_methods=["embedding", "vad", "energy", "spectral"]  # Use all methods
         )
         self.speaker_separator = SpeakerSeparator(separation_config)
+        
+        # Initialize simple secondary speaker remover as fallback/additional processing
+        self.simple_remover = SimpleSecondaryRemoval(
+            energy_threshold=0.5,     # More sensitive detection
+            min_silence_duration=0.05, # Detect shorter pauses
+            suppression_db=-60        # Extremely strong suppression (-60dB = 0.1% of original)
+        )
         
         # Statistics
         self.stats = {
@@ -220,13 +232,13 @@ class AudioEnhancer:
                 snr_estimate = 20  # Lower cap to ensure more processing (was 25)
             
             # Categorize noise level (more sensitive)
-            if snr_estimate > 40:  # Much higher threshold for "clean" (was 30)
+            if snr_estimate > 50:  # Very high threshold for "clean" to ensure processing
                 level = 'clean'
-            elif snr_estimate > 20:  # Higher threshold (was 15)
+            elif snr_estimate > 25:  # Higher threshold
                 level = 'mild'
-            elif snr_estimate > 10:  # Higher threshold (was 5)
+            elif snr_estimate > 15:  # Higher threshold
                 level = 'moderate'
-            elif snr_estimate > 0:
+            elif snr_estimate > 5:
                 level = 'aggressive'
             else:
                 level = 'ultra_aggressive'  # Use ultra for very noisy audio
@@ -297,7 +309,11 @@ class AudioEnhancer:
             return audio
         
         # Check if we should use speaker separation
-        if config.get('use_speaker_separation', False) or noise_level == 'secondary_speaker':
+        check_secondary = config.get('check_secondary_speaker', False)
+        use_separation = config.get('use_speaker_separation', False)
+        
+        # For ultra_aggressive mode or when explicitly requested, check for secondary speakers
+        if check_secondary or use_separation or noise_level == 'secondary_speaker':
             # Use speaker separator
             separation_result = self.speaker_separator.separate_speakers(audio, sample_rate)
             enhanced = separation_result['audio']
@@ -308,14 +324,37 @@ class AudioEnhancer:
                 self.stats['secondary_speakers_detected'] += 1
                 self.stats['secondary_speakers_removed'] += len(detections)
             
+            # Also apply regular enhancement for ultra_aggressive mode
+            if noise_level == 'ultra_aggressive' and config.get('passes', 0) > 0:
+                # Apply simple secondary removal first for more aggressive removal
+                enhanced = self.simple_remover.remove_secondary_speakers(enhanced, sample_rate)
+                
+                # Apply progressive enhancement after speaker separation
+                for pass_num in range(config.get('passes', 1)):
+                    if self.spectral_gating and self.spectral_gating.available:
+                        enhanced = self.spectral_gating.process(enhanced, sample_rate)
+                    elif self.denoiser and self.denoiser.model is not None:
+                        enhanced = self.denoiser.process(
+                            enhanced, sample_rate,
+                            denoiser_dry=config['denoiser_ratio']
+                        )
+                
+                # Apply preserve ratio with lower ratio for ultra_aggressive
+                if 'preserve_ratio' in config:
+                    preserve_ratio = config['preserve_ratio'] * 0.5  # Reduce preservation for stronger effect
+                    enhanced = enhanced * (1 - preserve_ratio) + audio * preserve_ratio
+            
             if return_metadata:
                 processing_time = time.time() - start_time
+                # Calculate initial metrics if not already done
+                initial_metrics = self._measure_quality_quick(audio, audio, sample_rate)
                 final_metrics = self._measure_quality_quick(enhanced, audio, sample_rate)
+                
                 metadata = {
                     'enhanced': True,
                     'noise_level': noise_level,
                     'enhancement_level': 'secondary_speaker_removal',
-                    'snr_before': initial_metrics.get('snr', 0) if 'initial_metrics' in locals() else 0,
+                    'snr_before': initial_metrics.get('snr', 0),
                     'snr_after': final_metrics.get('snr', 0),
                     'processing_time': processing_time,
                     'engine_used': 'speaker_separator',
@@ -323,6 +362,7 @@ class AudioEnhancer:
                     'secondary_speaker_confidence': max([d.confidence for d in detections]) if detections else 0.0,
                     'num_secondary_speakers': len(detections),
                     'speaker_similarity': separation_result['metrics'].get('similarity_preservation', 1.0),
+                    'use_speaker_separation': True,  # Indicate that speaker separation was used
                     'pesq': final_metrics.get('pesq', 2.5),
                     'stoi': final_metrics.get('stoi', 0.75)
                 }
@@ -419,7 +459,9 @@ class AudioEnhancer:
                 'engine_used': engine_used,
                 'passes_applied': passes_applied,
                 'pesq': final_metrics.get('pesq', 0),
-                'stoi': final_metrics.get('stoi', 0)
+                'stoi': final_metrics.get('stoi', 0),
+                'secondary_speaker_detected': False,  # No secondary speaker detected in this path
+                'use_speaker_separation': False      # Speaker separation not used in this path
             }
             return enhanced, metadata
         
