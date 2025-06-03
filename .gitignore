@@ -210,3 +210,18 @@ trees/
 image.png
 
 .hf_token
+
+# Test scripts and temporary files
+test_*.sh
+test_*.py
+main_test*.sh
+main_with_*.sh
+*_verification_report.md
+fix_*.patch
+test_checkpoints/
+test_metrics_output/
+
+# Temporary speaker models
+speaker_model.json
+omegaconf_fix.py
+run_with_fixes.py
