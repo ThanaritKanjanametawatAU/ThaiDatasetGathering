@@ -33,12 +33,16 @@ A modular system to gather Thai audio data from multiple sources and combine the
   - **Dataset-Separated Speaker IDs**: Each dataset's speakers are clustered independently to prevent cross-dataset merging
   - Supports fresh mode (`--fresh`) to reset speaker IDs
 - **Audio Enhancement**: Advanced audio quality improvement
-  - Secondary speaker detection and removal
-  - Noise reduction with denoiser and spectral gating
-  - Configurable enhancement levels (mild, moderate, aggressive)
+  - Secondary speaker detection and removal with PyAnnote
+  - Advanced speaker separation models (SepFormer/Conv-TasNet - optional)
+  - Multi-stage noise reduction with denoiser and spectral gating
+  - Configurable enhancement levels (mild, moderate, aggressive, ultra_aggressive)
   - Real-time monitoring dashboard for enhancement progress
   - Batch processing for efficient enhancement
   - GPU acceleration support
+  - Post-processing pipeline (artifact removal, spectral smoothing, level normalization)
+  - Quality-based exclusion logic with automated metrics (SI-SDR, PESQ, STOI)
+  - A/B comparison interface for manual evaluation
 
 ## Data Sources
 
@@ -262,7 +266,11 @@ ThaiDatasetGathering/
 │   │   │   ├── __init__.py
 │   │   │   ├── denoiser.py
 │   │   │   └── spectral_gating.py
-│   │   └── speaker_separation.py
+│   │   ├── speaker_separation.py    # PyAnnote-based separation
+│   │   ├── simple_secondary_removal.py # Energy-based removal
+│   │   ├── separation.py    # Advanced models (SepFormer/Conv-TasNet)
+│   │   ├── post_processing.py # Post-processing pipeline
+│   │   └── evaluation.py    # Metrics and evaluation tools
 │   └── stt/                 # Speech-to-text processors
 │       ├── __init__.py
 │       └── ensemble_stt.py
@@ -275,7 +283,10 @@ ThaiDatasetGathering/
 │   ├── test_streaming.py    # Tests for streaming mode
 │   ├── test_streaming_integration.py # Integration tests for streaming
 │   ├── test_checkpoint_system.py # Tests for unified checkpoint system
-│   └── test_complete_workflow.py # End-to-end workflow tests
+│   ├── test_complete_workflow.py # End-to-end workflow tests
+│   ├── test_advanced_separation.py # Tests for Phase 2 features
+│   ├── test_evaluation_metrics.py # Tests for Phase 3 features
+│   └── test_secondary_speaker_integration.py # Integration tests
 ├── docs/
 │   └── architecture.md      # Architecture documentation
 ├── data/                    # Data directory (created at runtime)

@@ -78,7 +78,8 @@ class AudioEnhancer:
         clean_threshold_snr: float = 30.0,
         target_pesq: float = 3.0,
         target_stoi: float = 0.85,
-        workers: Optional[int] = None
+        workers: Optional[int] = None,
+        enhancement_level: Optional[str] = None
     ):
         """
         Initialize audio enhancer.
@@ -91,12 +92,14 @@ class AudioEnhancer:
             target_stoi: Target STOI score for enhancement
             workers: Number of parallel workers for batch processing. 
                     If None, defaults to CPU count // 2 (minimum 4)
+            enhancement_level: Default enhancement level to use
         """
         self.use_gpu = use_gpu
         self.fallback_to_cpu = fallback_to_cpu
         self.clean_threshold_snr = clean_threshold_snr
         self.target_pesq = target_pesq
         self.target_stoi = target_stoi
+        self.enhancement_level = enhancement_level
         
         # Set workers based on CPU count if not specified
         if workers is None:
@@ -139,6 +142,12 @@ class AudioEnhancer:
             'secondary_speakers_detected': 0,
             'secondary_speakers_removed': 0
         }
+        
+        # Advanced separation engines
+        self.sepformer_engine = None
+        self.conv_tasnet_engine = None
+        self.exclusion_criteria = None
+        self.use_advanced_separation = False
     
     def _init_engines(self):
         """Initialize enhancement engines with fallback logic."""
@@ -165,6 +174,27 @@ class AudioEnhancer:
         
         if self.primary_engine is None:
             raise RuntimeError("No enhancement engines available!")
+    
+    def enable_advanced_separation(self, primary_model: str = "sepformer",
+                                 fallback_model: str = "conv-tasnet",
+                                 exclusion_criteria: Optional['ExclusionCriteria'] = None):
+        """Enable advanced speaker separation models"""
+        from .separation import SepFormerEngine, ConvTasNetEngine, ExclusionCriteria
+        
+        self.use_advanced_separation = True
+        
+        # Initialize engines
+        if primary_model == "sepformer":
+            self.sepformer_engine = SepFormerEngine(use_gpu=self.use_gpu)
+        elif primary_model == "conv-tasnet":
+            self.conv_tasnet_engine = ConvTasNetEngine(use_gpu=self.use_gpu)
+            
+        # Set exclusion criteria
+        if exclusion_criteria is None:
+            exclusion_criteria = ExclusionCriteria()
+        self.exclusion_criteria = exclusion_criteria
+        
+        logger.info(f"Advanced separation enabled with {primary_model}")
     
     def assess_noise_level(
         self,
@@ -286,7 +316,11 @@ class AudioEnhancer:
         
         # Assess noise level if not provided
         if noise_level is None:
-            noise_level = self.assess_noise_level(audio, sample_rate)
+            # Use default enhancement level if set
+            if self.enhancement_level:
+                noise_level = self.enhancement_level
+            else:
+                noise_level = self.assess_noise_level(audio, sample_rate)
         
         # Get enhancement configuration
         config = self.ENHANCEMENT_LEVELS.get(noise_level, self.ENHANCEMENT_LEVELS['moderate'])
@@ -316,10 +350,59 @@ class AudioEnhancer:
         
         # For ultra_aggressive mode or when explicitly requested, check for secondary speakers
         if check_secondary or use_separation or noise_level == 'secondary_speaker':
-            # Use speaker separator
-            separation_result = self.speaker_separator.separate_speakers(audio, sample_rate)
-            enhanced = separation_result['audio']
-            detections = separation_result['detections']
+            # Use advanced separation if enabled
+            if self.use_advanced_separation and self.sepformer_engine:
+                from .separation import SeparationResult
+                from .post_processing import ArtifactRemover, SpectralSmoother, LevelNormalizer
+                
+                # Try advanced separation
+                sep_result = self.sepformer_engine.separate(audio, sample_rate)
+                
+                # Check exclusion criteria
+                if self.exclusion_criteria and self.exclusion_criteria.should_exclude(sep_result):
+                    # Fallback to original method
+                    logger.info(f"Advanced separation excluded: {sep_result.excluded_reason}")
+                    separation_result = self.speaker_separator.separate_speakers(audio, sample_rate)
+                    enhanced = separation_result['audio']
+                    detections = separation_result['detections']
+                else:
+                    # Use advanced separation result
+                    enhanced = sep_result.primary_audio
+                    detections = []  # Advanced models don't provide detailed detections
+                    
+                    # Apply post-processing
+                    artifact_remover = ArtifactRemover()
+                    spectral_smoother = SpectralSmoother()
+                    level_normalizer = LevelNormalizer()
+                    
+                    enhanced = artifact_remover.process(enhanced, sample_rate)
+                    enhanced = spectral_smoother.process(enhanced, sample_rate)
+                    enhanced = level_normalizer.process(enhanced, sample_rate)
+                    
+                    # Update metadata
+                    if return_metadata:
+                        metadata = {
+                            'enhanced': True,
+                            'noise_level': noise_level,
+                            'enhancement_level': 'advanced_separation',
+                            'processing_time': sep_result.processing_time,
+                            'engine_used': sep_result.separation_method,
+                            'advanced_separation_used': True,
+                            'separation_model': sep_result.separation_method,
+                            'si_sdr_improvement': sep_result.metrics.get('si_sdr', 0),
+                            'excluded': False,
+                            'use_speaker_separation': True
+                        }
+                        # Add other metrics
+                        for key, value in sep_result.metrics.items():
+                            if key not in metadata:
+                                metadata[key] = value
+                        return enhanced, metadata
+            else:
+                # Use original speaker separator
+                separation_result = self.speaker_separator.separate_speakers(audio, sample_rate)
+                enhanced = separation_result['audio']
+                detections = separation_result['detections']
             
             # Update statistics
             if detections:
