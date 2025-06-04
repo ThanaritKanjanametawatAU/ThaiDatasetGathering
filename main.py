@@ -897,8 +897,8 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
         logger.info(f"Enhancement metrics saved to {summary_path}")
     
     # Upload dataset card
+    total_duration_hours = total_duration_seconds / 3600.0
     if uploader:
-        total_duration_hours = total_duration_seconds / 3600.0
         dataset_info = {
             "name": TARGET_DATASET["name"],
             "description": TARGET_DATASET["description"],
