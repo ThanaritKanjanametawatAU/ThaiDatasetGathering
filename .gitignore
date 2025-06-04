@@ -211,9 +211,9 @@ image.png
 
 .hf_token
 
-# Test scripts and temporary files
-test_*.sh
-test_*.py
+# Test scripts and temporary files (but not in tests/ directory)
+/test_*.sh
+/test_*.py
 main_test*.sh
 main_with_*.sh
 *_verification_report.md
