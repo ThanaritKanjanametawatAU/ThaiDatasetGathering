@@ -16,7 +16,22 @@ The project collects, processes, and normalizes Thai language audio from various
 
 You can Check the pushed dataset on https://huggingface.co/datasets/Thanarit/Thai-Voice
 
-## Recent Updates (January 2025)
+## Recent Updates (February 2025)
+
+### Secondary Speaker Removal Implementation (February 4, 2025)
+- **Implemented Phases 2 & 3 of Secondary Speaker Removal**: Using Test-Driven Development (TDD)
+- **Phase 2 - Advanced Separation Models**:
+  - Integrated SepFormer and Conv-TasNet models (optional, requires SpeechBrain)
+  - Added quality-based exclusion logic with SI-SDR, PESQ, STOI thresholds
+  - Implemented post-processing pipeline (artifact removal, spectral smoothing, level normalization)
+  - Memory-aware processing with automatic fallback for long audio files
+- **Phase 3 - Evaluation & Testing**:
+  - Created comprehensive metrics calculator for automated evaluation
+  - Built evaluation dashboard for real-time monitoring
+  - Implemented test set management system for manual evaluation
+  - Added A/B comparison interface for quality assessment
+- **Test Results**: 37 tests passed, 9 skipped (SpeechBrain optional), 0 failed
+- **Integration**: Seamlessly integrates with existing audio enhancement pipeline
 
 ### TDD Revert of Secondary Speaker Removal (January 31, 2025)
 - **Successfully Reverted Secondary Speaker Removal**: Using Test-Driven Development methodology

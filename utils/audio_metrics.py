@@ -25,6 +25,42 @@ except ImportError:
     warnings.warn("STOI not available. Install with: pip install pystoi")
 
 
+def calculate_si_sdr(reference: np.ndarray, estimation: np.ndarray) -> float:
+    """
+    Calculate Scale-Invariant Signal-to-Distortion Ratio (SI-SDR).
+    
+    Args:
+        reference: Reference (clean) signal
+        estimation: Estimated (processed) signal
+        
+    Returns:
+        SI-SDR in decibels
+    """
+    # Ensure same length
+    min_len = min(len(reference), len(estimation))
+    reference = reference[:min_len]
+    estimation = estimation[:min_len]
+    
+    # Remove mean
+    reference = reference - np.mean(reference)
+    estimation = estimation - np.mean(estimation)
+    
+    # Normalize reference
+    reference = reference / (np.sqrt(np.sum(reference**2)) + 1e-8)
+    
+    # Compute projection
+    dot = np.sum(reference * estimation)
+    s_target = dot * reference
+    
+    # Compute distortion
+    e_noise = estimation - s_target
+    
+    # Compute SI-SDR
+    si_sdr = 10 * np.log10(np.sum(s_target**2) / (np.sum(e_noise**2) + 1e-8) + 1e-8)
+    
+    return si_sdr
+
+
 def calculate_snr(clean: np.ndarray, noisy: np.ndarray) -> float:
     """
     Calculate Signal-to-Noise Ratio (SNR) in dB.

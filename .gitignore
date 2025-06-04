@@ -225,3 +225,9 @@ test_metrics_output/
 speaker_model.json
 omegaconf_fix.py
 run_with_fixes.py
+
+# Pretrained models directory
+pretrained_models/
+
+# Test sets directory
+test_sets/

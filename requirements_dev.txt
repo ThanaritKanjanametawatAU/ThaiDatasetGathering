@@ -1,0 +1,10 @@
+# Development dependencies
+# Optional advanced models (not required for basic functionality)
+# speechbrain>=1.0.0  # For SepFormer and Conv-TasNet models
+
+# Testing and development tools
+pytest>=8.3.5
+pytest-cov>=4.0.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0
