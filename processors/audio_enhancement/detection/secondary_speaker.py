@@ -412,15 +412,25 @@ class AdaptiveSecondaryDetection(SecondarySpeakerDetector):
             features = self._extract_spectral_features(segment, sample_rate)
             spectral_features.append(features)
             
+        if not spectral_features:
+            return detections
+            
         spectral_features = np.array(spectral_features)
+        
+        # Check if we have enough data
+        if spectral_features.ndim < 2 or spectral_features.shape[0] < 2:
+            return detections
         
         # Find anomalies in spectral trajectory
         for feat_idx in range(spectral_features.shape[1]):
             feature = spectral_features[:, feat_idx]
             
             # Calculate local statistics
-            window = 20  # 1 second window
+            window = min(20, len(feature) // 3)  # Adaptive window size
             
+            if window < 2:
+                continue
+                
             for i in range(window, len(feature) - window):
                 local_mean = np.mean(feature[i-window:i+window])
                 local_std = np.std(feature[i-window:i+window])

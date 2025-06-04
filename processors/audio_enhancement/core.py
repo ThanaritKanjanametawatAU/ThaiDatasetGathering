@@ -79,7 +79,8 @@ class AudioEnhancer:
         target_pesq: float = 3.0,
         target_stoi: float = 0.85,
         workers: Optional[int] = None,
-        enhancement_level: Optional[str] = None
+        enhancement_level: Optional[str] = None,
+        enable_35db_enhancement: bool = False
     ):
         """
         Initialize audio enhancer.
@@ -93,6 +94,7 @@ class AudioEnhancer:
             workers: Number of parallel workers for batch processing. 
                     If None, defaults to CPU count // 2 (minimum 4)
             enhancement_level: Default enhancement level to use
+            enable_35db_enhancement: Whether to enable 35dB SNR enhancement mode
         """
         self.use_gpu = use_gpu
         self.fallback_to_cpu = fallback_to_cpu
@@ -100,6 +102,7 @@ class AudioEnhancer:
         self.target_pesq = target_pesq
         self.target_stoi = target_stoi
         self.enhancement_level = enhancement_level
+        self.enable_35db_enhancement = enable_35db_enhancement
         
         # Set workers based on CPU count if not specified
         if workers is None:
@@ -142,6 +145,9 @@ class AudioEnhancer:
             'secondary_speakers_detected': 0,
             'secondary_speakers_removed': 0
         }
+        
+        # Expose enhancement configuration for testing/inspection
+        self.enhancement_config = self.ENHANCEMENT_LEVELS
         
         # Advanced separation engines
         self.sepformer_engine = None
@@ -689,3 +695,53 @@ class AudioEnhancer:
             'total_snr_improvement': 0.0,
             'total_processing_time': 0.0
         }
+    
+    def enhance_to_target_snr(self, audio: np.ndarray, sample_rate: int, target_snr: float = 35) -> Tuple[np.ndarray, Dict]:
+        """
+        Enhance audio to achieve target SNR (35dB for voice cloning).
+        
+        Args:
+            audio: Input audio signal
+            sample_rate: Sample rate in Hz
+            target_snr: Target SNR in dB (default: 35)
+            
+        Returns:
+            Tuple of (enhanced_audio, metadata_dict)
+        """
+        # Import the orchestrator here to avoid circular imports
+        from .enhancement_orchestrator import EnhancementOrchestrator
+        
+        # Check if 35dB enhancement is enabled
+        if not getattr(self, 'enable_35db_enhancement', True):
+            # Use standard enhancement
+            return self.enhance(audio, sample_rate, return_metadata=True)
+        
+        # Create orchestrator
+        orchestrator = EnhancementOrchestrator(target_snr=target_snr)
+        
+        # Process with orchestrator
+        enhanced, metrics = orchestrator.enhance(audio, sample_rate)
+        
+        # Update metadata with 35dB specific fields
+        metadata = {
+            "snr_db": metrics["final_snr"],
+            "audio_quality_metrics": {
+                "pesq": metrics.get("pesq", None),
+                "stoi": metrics.get("stoi", None),
+                "mos_estimate": metrics.get("mos", None)
+            },
+            "enhancement_applied": metrics["enhanced"],
+            "naturalness_score": metrics["naturalness"],
+            "snr_improvement": metrics["snr_improvement"],
+            "target_achieved": metrics["target_achieved"],
+            "iterations": metrics["iterations"],
+            "stages_applied": metrics["stages_applied"]
+        }
+        
+        # Update statistics
+        self.stats['total_processed'] += 1
+        if metrics["enhanced"]:
+            self.stats['enhanced'] += 1
+            self.stats['total_snr_improvement'] += metrics["snr_improvement"]
+        
+        return enhanced, metadata
