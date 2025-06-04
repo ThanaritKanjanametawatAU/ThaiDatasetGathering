@@ -1,0 +1,261 @@
+/* Additional styles for enhanced visual effects */
+
+/* Glassmorphism enhancements */
+.glass-card-premium {
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.1) 0%,
+        rgba(255, 255, 255, 0.05) 100%
+    );
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 
+        0 8px 32px 0 rgba(99, 102, 241, 0.1),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Neon glow effects */
+.neon-text {
+    text-shadow: 
+        0 0 10px currentColor,
+        0 0 20px currentColor,
+        0 0 30px currentColor,
+        0 0 40px currentColor;
+    animation: neon-flicker 2s infinite alternate;
+}
+
+@keyframes neon-flicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+/* Advanced animations */
+.float-animation {
+    animation: float-advanced 6s ease-in-out infinite;
+}
+
+@keyframes float-advanced {
+    0%, 100% { 
+        transform: translateY(0) rotate(0deg) scale(1); 
+    }
+    25% { 
+        transform: translateY(-20px) rotate(5deg) scale(1.05); 
+    }
+    50% { 
+        transform: translateY(-10px) rotate(-5deg) scale(1); 
+    }
+    75% { 
+        transform: translateY(-15px) rotate(3deg) scale(1.02); 
+    }
+}
+
+/* Gradient animations */
+.gradient-shift {
+    background-size: 200% 200%;
+    animation: gradient-shift 8s ease infinite;
+}
+
+@keyframes gradient-shift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* 3D card effects */
+.card-3d {
+    transform-style: preserve-3d;
+    transition: transform 0.6s;
+}
+
+.card-3d:hover {
+    transform: rotateY(10deg) rotateX(5deg) translateZ(50px);
+}
+
+/* Holographic effect */
+.holographic {
+    background: linear-gradient(
+        45deg,
+        #ff0080,
+        #ff8c00,
+        #40e0d0,
+        #ff0080
+    );
+    background-size: 300% 300%;
+    animation: holographic-shift 3s ease infinite;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+@keyframes holographic-shift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Pulse animations for important elements */
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 20px rgba(99, 102, 241, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+    }
+}
+
+/* Matrix rain effect for background */
+.matrix-rain {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    opacity: 0.05;
+    z-index: -1;
+}
+
+.matrix-column {
+    position: absolute;
+    top: -100%;
+    font-family: monospace;
+    font-size: 20px;
+    color: #0f0;
+    animation: matrix-fall linear infinite;
+}
+
+@keyframes matrix-fall {
+    to {
+        transform: translateY(calc(100vh + 100%));
+    }
+}
+
+/* Loading spinner */
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Tooltip styles */
+.tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+    animation: tooltip-appear 0.3s ease forwards;
+}
+
+@keyframes tooltip-appear {
+    to { opacity: 1; }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-dark);
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+    .glass-card {
+        padding: 1.5rem;
+    }
+    
+    .section {
+        margin: 2rem 0;
+    }
+    
+    .status-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .hero h1 {
+        font-size: 2rem;
+    }
+}
+
+/* Print styles */
+@media print {
+    .background-animation,
+    .particle,
+    .theme-toggle,
+    .copy-btn {
+        display: none;
+    }
+    
+    body {
+        background: white;
+        color: black;
+    }
+    
+    .glass-card {
+        background: white;
+        border: 1px solid #ddd;
+        box-shadow: none;
+    }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Focus styles for keyboard navigation */
+*:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .glass-card {
+        background: rgba(0, 0, 0, 0.9);
+        border: 2px solid white;
+    }
+    
+    body {
+        background: black;
+        color: white;
+    }
+}

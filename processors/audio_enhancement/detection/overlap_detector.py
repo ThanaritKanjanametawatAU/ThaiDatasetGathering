@@ -48,9 +48,11 @@ class OverlapDetector:
         """Initialize overlap detector."""
         self.config = config or OverlapConfig()
         self.diarization_pipeline = None
+        self.osd_pipeline = None  # Overlapped Speech Detection pipeline
         
         if PYANNOTE_AVAILABLE:
             self._initialize_diarization()
+            self._initialize_osd()
     
     def _initialize_diarization(self):
         """Initialize speaker diarization pipeline."""
@@ -80,6 +82,22 @@ class OverlapDetector:
             logger.error(f"Failed to initialize diarization: {e}")
             self.diarization_pipeline = None
     
+    def _initialize_osd(self):
+        """Initialize overlapped speech detection (OSD) pipeline."""
+        try:
+            # Initialize PyAnnote OSD model
+            # Using segmentation model which can detect overlapped speech
+            self.osd_model = PyannoteModel.from_pretrained("pyannote/segmentation", 
+                                                           use_auth_token=False)
+            self.osd_pipeline = Inference(self.osd_model, 
+                                         duration=2.0,  # Process 2-second chunks
+                                         step=0.5,      # With 0.5s overlap
+                                         batch_size=32)
+            logger.info("OSD pipeline initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize OSD pipeline: {e}")
+            self.osd_pipeline = None
+    
     def detect_overlaps(
         self,
         audio: np.ndarray,
@@ -107,6 +125,12 @@ class OverlapDetector:
             "details": {}
         }
         
+        # Run PyAnnote OSD detection first (most accurate)
+        if self.osd_pipeline and PYANNOTE_AVAILABLE:
+            osd_overlaps = self._osd_detection(audio, sample_rate)
+            results["overlaps"].extend(osd_overlaps)
+            results["details"]["osd_overlaps"] = len(osd_overlaps)
+        
         # Run diarization-based overlap detection
         if self.diarization_pipeline and PYANNOTE_AVAILABLE:
             diarization_overlaps = self._diarization_overlap_detection(audio, sample_rate)
@@ -131,6 +155,63 @@ class OverlapDetector:
         results["confidence_scores"] = self._calculate_confidence_scores(results)
         
         return results
+    
+    def _osd_detection(
+        self,
+        audio: np.ndarray,
+        sample_rate: int
+    ) -> List[Tuple[float, float]]:
+        """Detect overlapped speech using PyAnnote OSD model."""
+        if not self.osd_pipeline:
+            return []
+        
+        try:
+            # Convert to tensor format expected by PyAnnote
+            audio_tensor = torch.from_numpy(audio.astype(np.float32))
+            if audio_tensor.dim() == 1:
+                audio_tensor = audio_tensor.unsqueeze(0)
+            
+            # Run OSD inference
+            segmentation = self.osd_pipeline({"waveform": audio_tensor, 
+                                            "sample_rate": sample_rate})
+            
+            overlaps = []
+            # Process OSD output - looking for overlapped speech regions
+            # The segmentation model outputs probability of speech activity
+            # High values in multiple channels indicate overlapped speech
+            if hasattr(segmentation, 'data'):
+                # Get the overlap probability data
+                overlap_probs = segmentation.data
+                
+                # For multi-speaker detection, check if multiple speakers active
+                if overlap_probs.shape[1] > 1:  # Multiple speaker classes
+                    # Find regions where multiple speakers are active
+                    threshold = 0.3  # Lower threshold for sensitive detection
+                    
+                    for t in range(overlap_probs.shape[0]):
+                        active_speakers = (overlap_probs[t] > threshold).sum()
+                        if active_speakers > 1:
+                            # Convert frame to time
+                            time_step = segmentation.sliding_window.step
+                            start_time = t * time_step
+                            end_time = start_time + segmentation.sliding_window.duration
+                            
+                            # Check if this extends a previous overlap
+                            if overlaps and abs(overlaps[-1][1] - start_time) < 0.1:
+                                overlaps[-1] = (overlaps[-1][0], end_time)
+                            else:
+                                overlaps.append((start_time, end_time))
+            
+            # Filter by minimum duration
+            overlaps = [(s, e) for s, e in overlaps 
+                       if (e - s) >= self.config.min_overlap_duration]
+            
+            logger.debug(f"OSD detected {len(overlaps)} overlap regions")
+            return overlaps
+            
+        except Exception as e:
+            logger.error(f"OSD detection failed: {e}")
+            return []
     
     def _diarization_overlap_detection(
         self,

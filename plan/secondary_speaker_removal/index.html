@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secondary Speaker Removal - Implementation Plan</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #ec4899;
+            --accent: #06b6d4;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1f2937;
+            --light: #f9fafb;
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            color: #e2e8f0;
+            line-height: 1.6;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* Animated Background */
+        .background-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .wave {
+            position: absolute;
+            width: 200%;
+            height: 100%;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(99, 102, 241, 0.1), 
+                transparent
+            );
+            animation: wave 15s linear infinite;
+        }
+
+        .wave:nth-child(2) {
+            animation-delay: -5s;
+            opacity: 0.5;
+        }
+
+        .wave:nth-child(3) {
+            animation-delay: -10s;
+            opacity: 0.3;
+        }
+
+        @keyframes wave {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        /* Floating Particles */
+        .particle {
+            position: fixed;
+            pointer-events: none;
+            opacity: 0.1;
+            animation: float 20s infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-100px) rotate(180deg); }
+        }
+
+        /* Header */
+        header {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            padding: 1rem 0;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .logo i {
+            color: var(--primary);
+            font-size: 2rem;
+        }
+
+        /* Navigation */
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 2rem;
+        }
+
+        nav a {
+            color: #e2e8f0;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            position: relative;
+            padding: 0.5rem 0;
+        }
+
+        nav a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--primary);
+            transition: width 0.3s ease;
+        }
+
+        nav a:hover::after {
+            width: 100%;
+        }
+
+        /* Main Content */
+        main {
+            margin-top: 80px;
+            padding: 2rem;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 4rem 0;
+            position: relative;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            animation: glow 3s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { filter: brightness(1); }
+            50% { filter: brightness(1.2); }
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: #94a3b8;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* Status Cards */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 3rem 0;
+        }
+
+        .status-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .status-card:hover::before {
+            opacity: 0.1;
+        }
+
+        .status-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+        }
+
+        .status-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .status-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .status-label {
+            color: #94a3b8;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Section Styles */
+        .section {
+            margin: 4rem 0;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeInUp 0.6s ease forwards;
+        }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .section-header h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #f1f5f9;
+        }
+
+        .section-header i {
+            font-size: 1.5rem;
+            color: var(--primary);
+        }
+
+        /* Glass Cards */
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            transform: translateX(5px);
+            border-color: var(--primary);
+        }
+
+        /* Architecture Diagram */
+        .architecture-diagram {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            overflow-x: auto;
+        }
+
+        .diagram-flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            min-width: 800px;
+            padding: 2rem 0;
+        }
+
+        .diagram-node {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            position: relative;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .diagram-node:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.5);
+        }
+
+        .diagram-arrow {
+            color: var(--primary);
+            font-size: 2rem;
+        }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding: 2rem 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--glass-border);
+            transform: translateX(-50%);
+        }
+
+        .timeline-item {
+            position: relative;
+            margin: 2rem 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .timeline-item:nth-child(odd) {
+            justify-content: flex-end;
+            text-align: right;
+        }
+
+        .timeline-item:nth-child(even) {
+            justify-content: flex-start;
+            text-align: left;
+        }
+
+        .timeline-content {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            width: 45%;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .timeline-content:hover {
+            transform: scale(1.02);
+            border-color: var(--primary);
+        }
+
+        .timeline-dot {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: var(--primary);
+            border-radius: 50%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+
+        /* Code Blocks */
+        .code-block {
+            background: #0f172a;
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            overflow-x: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            margin: 1rem 0;
+            position: relative;
+        }
+
+        .code-block::before {
+            content: attr(data-language);
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--primary);
+            text-transform: uppercase;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .tab {
+            padding: 1rem 2rem;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .tab:hover {
+            color: var(--primary);
+        }
+
+        .tab.active {
+            color: var(--primary);
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Progress Bars */
+        .progress-bar {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            height: 10px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
+            border-radius: 10px;
+            transition: width 1s ease;
+            animation: shimmer 2s linear infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -100% 0; }
+            100% { background-position: 100% 0; }
+        }
+
+        /* Footer */
+        footer {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border);
+            padding: 3rem 0;
+            margin-top: 4rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            nav ul {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .timeline::before {
+                left: 0;
+            }
+
+            .timeline-item {
+                justify-content: flex-start !important;
+                text-align: left !important;
+            }
+
+            .timeline-content {
+                width: calc(100% - 3rem);
+                margin-left: 3rem;
+            }
+
+            .timeline-dot {
+                left: 0;
+                transform: translateX(-50%);
+            }
+
+            .diagram-flow {
+                flex-direction: column;
+                min-width: auto;
+            }
+
+            .diagram-arrow {
+                transform: rotate(90deg);
+            }
+        }
+
+        /* Dark mode toggle */
+        .theme-toggle {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--primary);
+            transform: rotate(180deg);
+        }
+
+        /* Copy button */
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 3rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .copy-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .copy-btn.copied {
+            background: var(--success);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <!-- Background Animation -->
+    <div class="background-animation">
+        <div class="wave"></div>
+        <div class="wave"></div>
+        <div class="wave"></div>
+    </div>
+
+    <!-- Floating Particles -->
+    <script>
+        // Create floating particles
+        for (let i = 0; i < 20; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.innerHTML = '🎵';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.top = Math.random() * 100 + '%';
+            particle.style.fontSize = Math.random() * 20 + 10 + 'px';
+            particle.style.animationDelay = Math.random() * 20 + 's';
+            particle.style.animationDuration = 20 + Math.random() * 10 + 's';
+            document.body.appendChild(particle);
+        }
+    </script>
+
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <i class="fas fa-microphone-slash"></i>
+                <span>Secondary Speaker Removal</span>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="#overview">Overview</a></li>
+                    <li><a href="#architecture">Architecture</a></li>
+                    <li><a href="#implementation">Implementation</a></li>
+                    <li><a href="#testing">Testing</a></li>
+                </ul>
+            </nav>
+            <button class="theme-toggle">
+                <i class="fas fa-moon"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <!-- Hero Section -->
+        <section class="hero">
+            <h1>Secondary Speaker Removal</h1>
+            <p>Advanced audio processing pipeline to isolate primary speakers and remove overlapping speech from Thai audio datasets</p>
+        </section>
+
+        <!-- Status Cards -->
+        <div class="status-grid">
+            <div class="status-card">
+                <div class="status-icon" style="color: var(--primary)">
+                    <i class="fas fa-microphone"></i>
+                </div>
+                <div class="status-value">95%+</div>
+                <div class="status-label">Detection Accuracy</div>
+            </div>
+            <div class="status-card">
+                <div class="status-icon" style="color: var(--success)">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="status-value">0.95</div>
+                <div class="status-label">Speaker Similarity</div>
+            </div>
+            <div class="status-card">
+                <div class="status-icon" style="color: var(--accent)">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="status-value">3 Weeks</div>
+                <div class="status-label">Implementation Time</div>
+            </div>
+            <div class="status-card">
+                <div class="status-icon" style="color: var(--warning)">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="status-value">&gt;10 dB</div>
+                <div class="status-label">SI-SDR Improvement</div>
+            </div>
+        </div>
+
+        <!-- Overview Section -->
+        <section id="overview" class="section">
+            <div class="section-header">
+                <i class="fas fa-info-circle"></i>
+                <h2>Overview</h2>
+            </div>
+            
+            <div class="glass-card">
+                <h3>Problem Statement</h3>
+                <p>The current audio enhancement pipeline with <code>ultra_aggressive</code> mode is not effectively removing secondary speakers from audio samples. Users report hearing overlapping speech in the processed dataset, which degrades quality for speech recognition and synthesis tasks.</p>
+            </div>
+
+            <div class="glass-card">
+                <h3>Key Issues Identified</h3>
+                <ul style="list-style: none; padding: 0;">
+                    <li style="padding: 0.5rem 0;">
+                        <i class="fas fa-exclamation-triangle" style="color: var(--warning); margin-right: 0.5rem;"></i>
+                        <strong>Configuration Mismatch:</strong> The enhancement level doesn't properly trigger secondary speaker removal
+                    </li>
+                    <li style="padding: 0.5rem 0;">
+                        <i class="fas fa-exclamation-triangle" style="color: var(--warning); margin-right: 0.5rem;"></i>
+                        <strong>Weak Detection:</strong> Similarity threshold (0.7) is too high for effective detection
+                    </li>
+                    <li style="padding: 0.5rem 0;">
+                        <i class="fas fa-exclamation-triangle" style="color: var(--warning); margin-right: 0.5rem;"></i>
+                        <strong>Insufficient Suppression:</strong> Only 0.6 suppression strength is being used
+                    </li>
+                    <li style="padding: 0.5rem 0;">
+                        <i class="fas fa-exclamation-triangle" style="color: var(--warning); margin-right: 0.5rem;"></i>
+                        <strong>No Verification:</strong> No automated metrics to verify removal success
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Architecture Section -->
+        <section id="architecture" class="section">
+            <div class="section-header">
+                <i class="fas fa-project-diagram"></i>
+                <h2>Technical Architecture</h2>
+            </div>
+
+            <div class="architecture-diagram">
+                <h3>Processing Pipeline</h3>
+                <div class="diagram-flow">
+                    <div class="diagram-node" data-tooltip="Input audio from datasets">
+                        <i class="fas fa-file-audio"></i> Audio Input
+                    </div>
+                    <div class="diagram-arrow">→</div>
+                    <div class="diagram-node" data-tooltip="PyAnnote OSD + Multi-method detection">
+                        <i class="fas fa-search"></i> Overlap Detection
+                    </div>
+                    <div class="diagram-arrow">→</div>
+                    <div class="diagram-node" data-tooltip="Routing logic based on detection">
+                        <i class="fas fa-code-branch"></i> Decision Logic
+                    </div>
+                    <div class="diagram-arrow">→</div>
+                    <div class="diagram-node" data-tooltip="SepFormer/Conv-TasNet models">
+                        <i class="fas fa-cut"></i> Speaker Separation
+                    </div>
+                    <div class="diagram-arrow">→</div>
+                    <div class="diagram-node" data-tooltip="SI-SDR, PESQ, STOI metrics">
+                        <i class="fas fa-chart-bar"></i> Quality Validation
+                    </div>
+                    <div class="diagram-arrow">→</div>
+                    <div class="diagram-node" data-tooltip="Single-speaker output">
+                        <i class="fas fa-check"></i> Clean Output
+                    </div>
+                </div>
+            </div>
+
+            <!-- Technology Stack Tabs -->
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('detection')">Detection Models</button>
+                <button class="tab" onclick="showTab('separation')">Separation Models</button>
+                <button class="tab" onclick="showTab('metrics')">Evaluation Metrics</button>
+            </div>
+
+            <div id="detection" class="tab-content active">
+                <div class="glass-card">
+                    <h4><i class="fas fa-brain"></i> Detection Models</h4>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="padding: 0.5rem 0;">
+                            <strong>PyAnnote OSD:</strong> State-of-the-art overlapped speech detection
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 95%;"></div>
+                            </div>
+                            <small>95% accuracy on benchmark datasets</small>
+                        </li>
+                        <li style="padding: 0.5rem 0;">
+                            <strong>Energy-based Detection:</strong> Fast amplitude analysis
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 80%;"></div>
+                            </div>
+                            <small>80% accuracy, low computational cost</small>
+                        </li>
+                        <li style="padding: 0.5rem 0;">
+                            <strong>VAD-based Detection:</strong> Voice activity patterns
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 75%;"></div>
+                            </div>
+                            <small>75% accuracy on overlapping segments</small>
+                        </li>
+                        <li style="padding: 0.5rem 0;">
+                            <strong>Spectral Analysis:</strong> Frequency domain features
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 85%;"></div>
+                            </div>
+                            <small>85% accuracy with spectral features</small>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="separation" class="tab-content">
+                <div class="glass-card">
+                    <h4><i class="fas fa-scissors"></i> Separation Models</h4>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="padding: 1rem 0; border-bottom: 1px solid var(--glass-border);">
+                            <strong>SepFormer</strong> <span style="color: var(--success);">(Recommended)</span>
+                            <p>Transformer-based architecture achieving state-of-the-art results</p>
+                            <ul style="margin-top: 0.5rem;">
+                                <li>• SI-SDR: 22.3 dB on WSJ0-2mix</li>
+                                <li>• Best quality but higher memory usage</li>
+                                <li>• Handles complex overlapping scenarios</li>
+                            </ul>
+                        </li>
+                        <li style="padding: 1rem 0; border-bottom: 1px solid var(--glass-border);">
+                            <strong>Conv-TasNet</strong> <span style="color: var(--accent);">(Fallback)</span>
+                            <p>Convolutional architecture with good speed/quality balance</p>
+                            <ul style="margin-top: 0.5rem;">
+                                <li>• SI-SDR: 15.3 dB on WSJ0-2mix</li>
+                                <li>• Faster inference, lower memory</li>
+                                <li>• Good for real-time applications</li>
+                            </ul>
+                        </li>
+                        <li style="padding: 1rem 0;">
+                            <strong>Spectral Masking</strong> <span style="color: var(--warning);">(Baseline)</span>
+                            <p>Traditional approach for simple cases</p>
+                            <ul style="margin-top: 0.5rem;">
+                                <li>• Fast processing</li>
+                                <li>• Limited quality improvement</li>
+                                <li>• CPU-friendly</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="metrics" class="tab-content">
+                <div class="glass-card">
+                    <h4><i class="fas fa-chart-line"></i> Evaluation Metrics</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                        <div style="background: rgba(99, 102, 241, 0.1); padding: 1rem; border-radius: 8px;">
+                            <strong>SI-SDR</strong>
+                            <p style="font-size: 0.875rem; margin-top: 0.5rem;">Scale-Invariant Signal-to-Distortion Ratio</p>
+                            <p style="color: var(--primary); font-weight: 600;">Target: >10 dB improvement</p>
+                        </div>
+                        <div style="background: rgba(236, 72, 153, 0.1); padding: 1rem; border-radius: 8px;">
+                            <strong>PESQ</strong>
+                            <p style="font-size: 0.875rem; margin-top: 0.5rem;">Perceptual Evaluation of Speech Quality</p>
+                            <p style="color: var(--secondary); font-weight: 600;">Target: >3.0 score</p>
+                        </div>
+                        <div style="background: rgba(6, 182, 212, 0.1); padding: 1rem; border-radius: 8px;">
+                            <strong>STOI</strong>
+                            <p style="font-size: 0.875rem; margin-top: 0.5rem;">Short-Time Objective Intelligibility</p>
+                            <p style="color: var(--accent); font-weight: 600;">Target: >0.85 score</p>
+                        </div>
+                        <div style="background: rgba(16, 185, 129, 0.1); padding: 1rem; border-radius: 8px;">
+                            <strong>Speaker Similarity</strong>
+                            <p style="font-size: 0.875rem; margin-top: 0.5rem;">Cosine similarity of embeddings</p>
+                            <p style="color: var(--success); font-weight: 600;">Target: >0.95 score</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Implementation Section -->
+        <section id="implementation" class="section">
+            <div class="section-header">
+                <i class="fas fa-code"></i>
+                <h2>Implementation Plan</h2>
+            </div>
+
+            <!-- Timeline -->
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <h4>Week 1: Fix Current Implementation</h4>
+                        <ul>
+                            <li>Enable secondary speaker removal flags</li>
+                            <li>Integrate PyAnnote OSD model</li>
+                            <li>Lower detection thresholds</li>
+                            <li>Increase suppression strength to 0.95</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <h4>Week 2: Advanced Separation Models</h4>
+                        <ul>
+                            <li>Integrate SepFormer model</li>
+                            <li>Implement Conv-TasNet fallback</li>
+                            <li>Add exclusion logic for failed samples</li>
+                            <li>Implement post-processing pipeline</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <h4>Week 3: Evaluation & Testing</h4>
+                        <ul>
+                            <li>Implement automated metrics</li>
+                            <li>Create 100-sample test set</li>
+                            <li>Develop A/B comparison interface</li>
+                            <li>Integration testing with all datasets</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Code Examples -->
+            <div class="glass-card">
+                <h3>Configuration Updates</h3>
+                <div class="code-block" data-language="python">
+                    <button class="copy-btn" onclick="copyCode(this)">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                    <pre><code>SECONDARY_SPEAKER_CONFIG = {
+    "detection": {
+        "models": ["pyannote", "energy", "vad", "spectral"],
+        "voting_threshold": 0.5,  # Majority vote
+        "confidence_threshold": 0.3
+    },
+    "separation": {
+        "primary_model": "sepformer",
+        "fallback_model": "conv-tasnet",
+        "quality_threshold": {
+            "si_sdr": 10.0,  # dB
+            "pesq": 3.0,
+            "stoi": 0.85
+        }
+    },
+    "exclusion": {
+        "enabled": True,
+        "max_attempts": 2,
+        "log_excluded": True
+    }
+}</code></pre>
+                </div>
+            </div>
+
+            <div class="glass-card">
+                <h3>Enhancement Level Update</h3>
+                <div class="code-block" data-language="bash">
+                    <button class="copy-btn" onclick="copyCode(this)">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                    <pre><code># Updated main.sh configuration
+ENHANCEMENT_LEVEL="secondary_speaker_removal"  # New dedicated mode
+SPEAKER_SEPARATION_MODEL="sepformer"  # Or "conv-tasnet"
+OVERLAP_DETECTION_THRESHOLD="0.3"  # Sensitive detection
+SEPARATION_CONFIDENCE_THRESHOLD="0.7"  # Quality threshold
+EXCLUDE_FAILED_SEPARATIONS="true"  # Remove poor quality</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Testing Section -->
+        <section id="testing" class="section">
+            <div class="section-header">
+                <i class="fas fa-flask"></i>
+                <h2>Testing Strategy</h2>
+            </div>
+
+            <div class="glass-card">
+                <h3>Manual Test Cases (100 Samples)</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                    <div style="background: rgba(99, 102, 241, 0.1); padding: 1rem; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">20</div>
+                        <strong>Clean Single Speaker</strong>
+                        <p style="font-size: 0.875rem; margin-top: 0.5rem;">Baseline reference</p>
+                    </div>
+                    <div style="background: rgba(236, 72, 153, 0.1); padding: 1rem; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">20</div>
+                        <strong>Partial Overlap</strong>
+                        <p style="font-size: 0.875rem; margin-top: 0.5rem;">10-30% overlap</p>
+                    </div>
+                    <div style="background: rgba(6, 182, 212, 0.1); padding: 1rem; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">20</div>
+                        <strong>Heavy Overlap</strong>
+                        <p style="font-size: 0.875rem; margin-top: 0.5rem;">50%+ overlap</p>
+                    </div>
+                    <div style="background: rgba(16, 185, 129, 0.1); padding: 1rem; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">20</div>
+                        <strong>Multiple Speakers</strong>
+                        <p style="font-size: 0.875rem; margin-top: 0.5rem;">3+ speakers</p>
+                    </div>
+                    <div style="background: rgba(245, 158, 11, 0.1); padding: 1rem; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">20</div>
+                        <strong>Challenging Cases</strong>
+                        <p style="font-size: 0.875rem; margin-top: 0.5rem;">Similar voices, noise</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card">
+                <h3>Evaluation Criteria</h3>
+                <ul style="list-style: none; padding: 0;">
+                    <li style="padding: 0.5rem 0;">
+                        <i class="fas fa-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>
+                        <strong>Primary:</strong> No audible secondary speaker
+                    </li>
+                    <li style="padding: 0.5rem 0;">
+                        <i class="fas fa-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>
+                        <strong>Quality:</strong> Natural sounding, no artifacts
+                    </li>
+                    <li style="padding: 0.5rem 0;">
+                        <i class="fas fa-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>
+                        <strong>Intelligibility:</strong> Clear speech, correct transcription
+                    </li>
+                    <li style="padding: 0.5rem 0;">
+                        <i class="fas fa-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>
+                        <strong>Consistency:</strong> Similar quality across samples
+                    </li>
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <p>Secondary Speaker Removal Implementation Plan</p>
+            <p style="margin-top: 1rem; color: #94a3b8;">
+                <i class="fas fa-calendar"></i> Timeline: 2-3 weeks |
+                <i class="fas fa-users"></i> Thai Audio Dataset Project |
+                <i class="fas fa-check-circle"></i> Ready for Implementation
+            </p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

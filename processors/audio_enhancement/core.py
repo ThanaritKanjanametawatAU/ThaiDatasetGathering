@@ -59,7 +59,9 @@ class AudioEnhancer:
             'denoiser_ratio': 0.0,    # Full wet signal (maximum denoising)
             'spectral_ratio': 0.9,    # Very high spectral gating
             'passes': 5,              # Maximum passes
-            'preserve_ratio': 0.5     # Mix 50% original to prevent over-processing
+            'preserve_ratio': 0.5,    # Mix 50% original to prevent over-processing
+            'check_secondary_speaker': True,  # Enable secondary speaker detection
+            'use_speaker_separation': True    # Enable speaker separation
         },
         'secondary_speaker': {
             'skip': False,
