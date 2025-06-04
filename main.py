@@ -157,6 +157,43 @@ def parse_arguments() -> argparse.Namespace:
         action='store_true',
         help='Use GPU for audio enhancement (if available)'
     )
+    
+    # 35dB SNR Enhancement arguments
+    enhancement_35db_group = parser.add_argument_group('35dB SNR Enhancement')
+    enhancement_35db_group.add_argument(
+        '--enable-35db-enhancement',
+        action='store_true',
+        help='Enable 35dB SNR enhancement mode for voice cloning TTS training'
+    )
+    enhancement_35db_group.add_argument(
+        '--target-snr',
+        type=float,
+        default=35.0,
+        help='Target SNR in dB (default: 35.0)'
+    )
+    enhancement_35db_group.add_argument(
+        '--min-acceptable-snr',
+        type=float,
+        default=30.0,
+        help='Minimum acceptable SNR in dB for inclusion (default: 30.0)'
+    )
+    enhancement_35db_group.add_argument(
+        '--snr-success-rate',
+        type=float,
+        default=0.90,
+        help='Target success rate for achieving SNR (default: 0.90)'
+    )
+    enhancement_35db_group.add_argument(
+        '--max-enhancement-iterations',
+        type=int,
+        default=3,
+        help='Maximum enhancement iterations per sample (default: 3)'
+    )
+    enhancement_35db_group.add_argument(
+        '--include-failed-samples',
+        action='store_true',
+        help='Include samples that fail to reach target SNR with metadata'
+    )
 
     args = parser.parse_args()
 
@@ -439,7 +476,7 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
     enhancement_dashboard = None
     enhancement_buffer = []
     
-    if args.enable_audio_enhancement:
+    if args.enable_audio_enhancement or args.enable_35db_enhancement:
         from processors.audio_enhancement.core import AudioEnhancer
         from monitoring.metrics_collector import MetricsCollector
         from monitoring.dashboard import EnhancementDashboard
@@ -451,8 +488,23 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
         enhancement_config = {
             'use_gpu': args.enhancement_gpu,
             'fallback_to_cpu': True,
-            'workers': max(4, cpu_count // 2)  # Use half of CPU cores, minimum 4
+            'workers': max(4, cpu_count // 2),  # Use half of CPU cores, minimum 4
+            'enhancement_level': args.enhancement_level,  # Pass the configured enhancement level
+            'enable_35db_enhancement': args.enable_35db_enhancement  # Enable 35dB mode
         }
+        
+        # Update config if 35dB enhancement is enabled
+        if args.enable_35db_enhancement:
+            from config import ENHANCEMENT_35DB_CONFIG
+            # Override with command-line arguments
+            ENHANCEMENT_35DB_CONFIG['enabled'] = True
+            ENHANCEMENT_35DB_CONFIG['target_snr_db'] = args.target_snr
+            ENHANCEMENT_35DB_CONFIG['min_acceptable_snr_db'] = args.min_acceptable_snr
+            ENHANCEMENT_35DB_CONFIG['target_success_rate'] = args.snr_success_rate
+            ENHANCEMENT_35DB_CONFIG['processing']['max_iterations'] = args.max_enhancement_iterations
+            ENHANCEMENT_35DB_CONFIG['fallback']['include_failed'] = args.include_failed_samples
+            
+            logger.info(f"35dB SNR enhancement enabled - Target: {args.target_snr}dB, Min: {args.min_acceptable_snr}dB")
         
         audio_enhancer = AudioEnhancer(**enhancement_config)
         logger.info(f"Initialized audio enhancement system (level: {args.enhancement_level})")
@@ -488,6 +540,10 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
             embedding_buffer = []
         
         if len(batch_buffer) >= args.upload_batch_size and uploader:
+            # Filter out excluded samples if using 35dB enhancement
+            if args.enable_35db_enhancement and not args.include_failed_samples:
+                batch_buffer = [s for s in batch_buffer if not s.get('_exclude', False)]
+            
             # Upload only the required batch size
             upload_batch = batch_buffer[:args.upload_batch_size]
             success, shard_name = uploader.upload_batch(upload_batch)
@@ -586,15 +642,32 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                             ]
                             
                             # Process batch
-                            enhanced_results = audio_enhancer.process_batch(
-                                audio_batch
-                                # Uses configured workers from AudioEnhancer
-                            )
+                            if args.enable_35db_enhancement:
+                                # Use 35dB enhancement mode
+                                enhanced_results = []
+                                for audio, sr, identifier in audio_batch:
+                                    enhanced, metadata = audio_enhancer.enhance_to_target_snr(audio, sr, args.target_snr)
+                                    enhanced_results.append((enhanced, metadata))
+                            else:
+                                # Use standard enhancement
+                                enhanced_results = audio_enhancer.process_batch(
+                                    audio_batch
+                                    # Uses configured workers from AudioEnhancer
+                                )
                             
                             # Update samples with enhanced audio
                             for sample_to_enhance, (enhanced_audio, metadata) in zip(enhancement_buffer, enhanced_results):
                                 sample_to_enhance['audio']['array'] = enhanced_audio
                                 sample_to_enhance['enhancement_metadata'] = metadata
+                                
+                                # Add SNR field if using 35dB enhancement
+                                if args.enable_35db_enhancement and 'snr_db' in metadata:
+                                    sample_to_enhance['snr_db'] = metadata['snr_db']
+                                    
+                                    # Optionally exclude samples below minimum SNR
+                                    if not args.include_failed_samples and metadata['snr_db'] < args.min_acceptable_snr:
+                                        # Mark for exclusion
+                                        sample_to_enhance['_exclude'] = True
                                 
                                 # Add metrics to collector
                                 if enhancement_metrics_collector:
@@ -730,15 +803,32 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                     ]
                     
                     # Process batch
-                    enhanced_results = audio_enhancer.process_batch(
-                        audio_batch
-                        # Uses configured workers from AudioEnhancer
-                    )
+                    if args.enable_35db_enhancement:
+                        # Use 35dB enhancement mode
+                        enhanced_results = []
+                        for audio, sr, identifier in audio_batch:
+                            enhanced, metadata = audio_enhancer.enhance_to_target_snr(audio, sr, args.target_snr)
+                            enhanced_results.append((enhanced, metadata))
+                    else:
+                        # Use standard enhancement
+                        enhanced_results = audio_enhancer.process_batch(
+                            audio_batch
+                            # Uses configured workers from AudioEnhancer
+                        )
                     
                     # Update samples with enhanced audio
                     for sample_to_enhance, (enhanced_audio, metadata) in zip(enhancement_buffer, enhanced_results):
                         sample_to_enhance['audio']['array'] = enhanced_audio
                         sample_to_enhance['enhancement_metadata'] = metadata
+                        
+                        # Add SNR field if using 35dB enhancement
+                        if args.enable_35db_enhancement and 'snr_db' in metadata:
+                            sample_to_enhance['snr_db'] = metadata['snr_db']
+                            
+                            # Optionally exclude samples below minimum SNR
+                            if not args.include_failed_samples and metadata['snr_db'] < args.min_acceptable_snr:
+                                # Mark for exclusion
+                                sample_to_enhance['_exclude'] = True
                         
                         # Add metrics to collector
                         if enhancement_metrics_collector:
@@ -824,14 +914,31 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                 for s in enhancement_buffer
             ]
             
-            enhanced_results = audio_enhancer.process_batch(
-                audio_batch
-                # Uses configured workers from AudioEnhancer
-            )
+            if args.enable_35db_enhancement:
+                # Use 35dB enhancement mode
+                enhanced_results = []
+                for audio, sr, identifier in audio_batch:
+                    enhanced, metadata = audio_enhancer.enhance_to_target_snr(audio, sr, args.target_snr)
+                    enhanced_results.append((enhanced, metadata))
+            else:
+                # Use standard enhancement
+                enhanced_results = audio_enhancer.process_batch(
+                    audio_batch
+                    # Uses configured workers from AudioEnhancer
+                )
             
             for sample_to_enhance, (enhanced_audio, metadata) in zip(enhancement_buffer, enhanced_results):
                 sample_to_enhance['audio']['array'] = enhanced_audio
                 sample_to_enhance['enhancement_metadata'] = metadata
+                
+                # Add SNR field if using 35dB enhancement
+                if args.enable_35db_enhancement and 'snr_db' in metadata:
+                    sample_to_enhance['snr_db'] = metadata['snr_db']
+                    
+                    # Optionally exclude samples below minimum SNR
+                    if not args.include_failed_samples and metadata['snr_db'] < args.min_acceptable_snr:
+                        # Mark for exclusion
+                        sample_to_enhance['_exclude'] = True
                 
                 if enhancement_metrics_collector:
                     metrics_dict = {
@@ -875,6 +982,11 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
         # Make sure any lingering embeddings are processed first
         if speaker_identifier and embedding_buffer:
             check_and_upload_batch(force_process_embeddings=True)
+        
+        # Filter out excluded samples if using 35dB enhancement
+        if args.enable_35db_enhancement and not args.include_failed_samples:
+            batch_buffer = [s for s in batch_buffer if not s.get('_exclude', False)]
+            logger.info(f"Final batch after filtering: {len(batch_buffer)} samples")
         
         success, shard_name = uploader.upload_batch(batch_buffer)
         if not success:

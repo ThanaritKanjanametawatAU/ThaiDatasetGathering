@@ -255,3 +255,37 @@ NOISE_REDUCTION_CONFIG = {
         "noise_types"
     ]
 }
+
+# Audio Quality Enhancement to 35dB SNR Configuration
+ENHANCEMENT_35DB_CONFIG = {
+    "enabled": False,  # Default disabled, enable with --enable-35db-enhancement
+    "target_snr_db": 35.0,
+    "min_acceptable_snr_db": 30.0,
+    "target_success_rate": 0.90,  # 90% of samples should achieve target
+    "max_enhancement_passes": 3,
+    "naturalness_weights": {
+        "preserve_harmonics": 0.8,
+        "suppress_noise": 0.2
+    },
+    "perceptual_limits": {
+        "min_pesq": 3.5,
+        "min_stoi": 0.85,
+        "max_spectral_distortion": 0.15
+    },
+    "quality_thresholds": {
+        "min_naturalness": 0.85,
+        "max_spectral_distortion": 0.15,
+        "min_harmonic_preservation": 0.85
+    },
+    "processing": {
+        "max_iterations": 3,
+        "batch_size": 32,
+        "use_gpu": True,
+        "max_processing_time": 1.8,  # seconds per sample
+        "gpu_batch_size": 32
+    },
+    "fallback": {
+        "include_failed": True,  # Include samples that don't reach 35dB
+        "min_acceptable_snr": 25.0
+    }
+}

@@ -106,10 +106,24 @@ class BaseProcessor(ABC):
         # Streaming checkpoint tracking
         self.streaming_checkpoint_file = None
         
-        # Noise reduction configuration
+        # Noise reduction configuration (backward compatibility)
         self.noise_reduction_enabled = config.get("enable_noise_reduction", False)
         self.noise_reduction_config = config.get("noise_reduction_config", {})
-        self.audio_enhancer = None
+        
+        # Audio enhancement configuration (new approach)
+        self.audio_enhancement = config.get("audio_enhancement", {})
+        if self.audio_enhancement.get("enabled", False):
+            # Override old noise reduction config
+            self.noise_reduction_enabled = True
+            self.audio_enhancer = self.audio_enhancement.get("enhancer")
+            self.enhancement_level = self.audio_enhancement.get("level")
+            self.enhancement_batch_size = self.audio_enhancement.get("batch_size", 10)
+            self.enhancement_metrics_collector = self.audio_enhancement.get("metrics_collector")
+            self.enhancement_dashboard = self.audio_enhancement.get("dashboard")
+        else:
+            self.audio_enhancer = None
+            self.enhancement_level = None
+            
         self.enhancement_stats = {
             "total_enhanced": 0,
             "enhancement_failures": 0,
@@ -118,8 +132,8 @@ class BaseProcessor(ABC):
             "noise_types_found": {}
         }
         
-        # Initialize audio enhancer if enabled
-        if self.noise_reduction_enabled:
+        # Initialize audio enhancer if enabled (old way)
+        if self.noise_reduction_enabled and not self.audio_enhancer:
             self._initialize_audio_enhancer()
         self.streaming_checkpoint_data = {}
         

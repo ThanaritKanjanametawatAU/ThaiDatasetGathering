@@ -201,9 +201,14 @@ class SimpleSecondaryRemoval:
         Returns:
             Audio with spectral masking applied
         """
-        # STFT parameters
-        n_fft = 2048
-        hop_length = 256
+        # STFT parameters - adjust for short audio
+        audio_length = len(audio)
+        n_fft = min(2048, audio_length - 1) if audio_length > 64 else 64
+        hop_length = min(256, n_fft // 4)
+        
+        # For very short audio, just return original
+        if audio_length < 128:
+            return audio
         
         # Pad audio if necessary
         audio_padded = audio.copy()
