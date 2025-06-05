@@ -202,13 +202,9 @@ class SpeakerSeparator:
         processed = audio_array.copy()
         
         for detection in detections:
-            # Calculate suppression strength based on confidence
-            if detection.confidence >= 0.8:
-                strength = self.config.suppression_strength
-            elif detection.confidence >= 0.5:
-                strength = self.config.suppression_strength * 0.7
-            else:
-                strength = self.config.suppression_strength * 0.4
+            # For secondary speaker removal, use maximum suppression regardless of confidence
+            # We want to remove ANY detected secondary speaker
+            strength = max(0.95, self.config.suppression_strength)
                 
             # Apply graduated suppression
             processed = self._apply_suppression(
@@ -261,8 +257,9 @@ class SpeakerSeparator:
         
         # For strong suppression (> 0.8), use multiple techniques
         if strength > 0.8:
-            # 1. Aggressive amplitude reduction
-            segment *= (1 - strength) * 0.1  # Extra reduction factor
+            # 1. Aggressive amplitude reduction - make it MUCH stronger
+            # Instead of (1-strength)*0.1, use exponential reduction
+            segment *= 10 ** (-60/20)  # -60dB reduction = 0.001x original
             
             # 2. Apply spectral suppression
             if len(segment) > 256:  # Minimum length for FFT
@@ -313,7 +310,8 @@ class SpeakerSeparator:
                 segment = np.fft.irfft(fft_suppressed, n=len(segment))
             else:
                 # Simple amplitude reduction for very short segments
-                segment *= (1 - strength)
+                # Use the same -60dB reduction for consistency
+                segment *= 10 ** (-60/20)  # -60dB reduction
             
         # Apply fade in/out to avoid clicks
         if fade_samples > 0 and len(segment) > 2 * fade_samples:
@@ -323,14 +321,9 @@ class SpeakerSeparator:
             segment[:fade_samples] *= fade_in
             segment[-fade_samples:] *= fade_out
         
-        # For very strong suppression, don't blend with original
-        if strength > 0.9:
-            # Just use the heavily suppressed segment
-            pass
-        else:
-            # Blend with original for moderate suppression
-            original = audio_array[start_sample:end_sample].copy()
-            segment = segment * strength + original * (1 - strength)
+        # For secondary speaker removal, always use full suppression
+        # Don't blend with original as that would bring back the secondary speaker
+        # (Removed the blending logic that was weakening the suppression)
         
         # Apply to audio
         result = audio_array.copy()
