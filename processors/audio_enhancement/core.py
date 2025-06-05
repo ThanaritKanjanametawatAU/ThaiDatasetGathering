@@ -14,6 +14,7 @@ from .engines.denoiser import DenoiserEngine
 from .engines.spectral_gating import SpectralGatingEngine
 from .speaker_separation import SpeakerSeparator, SeparationConfig
 from .simple_secondary_removal import SimpleSecondaryRemoval
+from .full_audio_secondary_removal import FullAudioSecondaryRemoval
 from utils.audio_metrics import (
     calculate_snr, calculate_pesq, calculate_stoi,
     calculate_spectral_distortion, calculate_speaker_similarity,
@@ -52,7 +53,9 @@ class AudioEnhancer:
             'skip': False,
             'denoiser_ratio': 0.005,  # Lower = more denoising (was 0.01)
             'spectral_ratio': 0.8,    # Higher = more spectral gating (was 0.7)
-            'passes': 4               # More passes for better cleaning (was 3)
+            'passes': 4,              # More passes for better cleaning (was 3)
+            'check_secondary_speaker': True,  # Enable secondary speaker detection
+            'use_speaker_separation': True    # Enable speaker separation
         },
         'ultra_aggressive': {
             'skip': False,
@@ -135,6 +138,19 @@ class AudioEnhancer:
             suppression_db=-60        # Extremely strong suppression (-60dB = 0.1% of original)
         )
         
+        # Initialize full audio secondary remover for comprehensive removal
+        self.full_audio_remover = FullAudioSecondaryRemoval(
+            detection_threshold=0.5,
+            min_silence_duration=0.05,
+            preserve_main_freq_range=(250, 3500),  # Preserve main speech frequencies
+            suppression_strength=0.8,  # Strong but not total suppression
+            use_adaptive_filtering=True
+        )
+        
+        # Initialize audio-separator based remover (optional, more powerful)
+        self.audio_separator_remover = None
+        self.use_audio_separator = False
+        
         # Statistics
         self.stats = {
             'total_processed': 0,
@@ -201,6 +217,31 @@ class AudioEnhancer:
         self.exclusion_criteria = exclusion_criteria
         
         logger.info(f"Advanced separation enabled with {primary_model}")
+    
+    def enable_audio_separator(self, model_name: Optional[str] = None, use_multi_model: bool = False):
+        """Enable audio-separator based secondary speaker removal.
+        
+        Args:
+            model_name: Specific model to use, or None for default
+            use_multi_model: Try multiple models for best result
+        """
+        try:
+            if use_multi_model:
+                from .audio_separator_secondary_removal import MultiModelSecondaryRemoval
+                self.audio_separator_remover = MultiModelSecondaryRemoval(use_gpu=self.use_gpu)
+            else:
+                from .audio_separator_secondary_removal import AudioSeparatorSecondaryRemoval
+                self.audio_separator_remover = AudioSeparatorSecondaryRemoval(
+                    model_name=model_name or "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+                    use_gpu=self.use_gpu,
+                    aggression=10,
+                    post_process=True
+                )
+            self.use_audio_separator = True
+            logger.info("Audio-separator secondary removal enabled")
+        except ImportError:
+            logger.warning("audio-separator not available. Install with: pip install audio-separator[cpu]")
+            self.use_audio_separator = False
     
     def assess_noise_level(
         self,
@@ -415,10 +456,30 @@ class AudioEnhancer:
                 self.stats['secondary_speakers_detected'] += 1
                 self.stats['secondary_speakers_removed'] += len(detections)
             
+            # Apply full audio secondary removal for comprehensive removal
+            if noise_level in ['aggressive', 'ultra_aggressive']:
+                # Try audio-separator first if available
+                if self.use_audio_separator and self.audio_separator_remover:
+                    try:
+                        logger.info("Applying audio-separator secondary removal...")
+                        enhanced, separator_metadata = self.audio_separator_remover.process(enhanced, sample_rate)
+                        if separator_metadata.get('processing_applied') and not separator_metadata.get('error'):
+                            logger.info(f"Audio-separator removal applied: {separator_metadata}")
+                        else:
+                            # Fallback to full audio remover
+                            enhanced, removal_metadata = self.full_audio_remover.process(enhanced, sample_rate)
+                            logger.info(f"Full audio secondary removal applied: {removal_metadata}")
+                    except Exception as e:
+                        logger.warning(f"Audio-separator failed: {e}, using fallback method")
+                        enhanced, removal_metadata = self.full_audio_remover.process(enhanced, sample_rate)
+                        logger.info(f"Full audio secondary removal applied: {removal_metadata}")
+                else:
+                    # Use full audio remover for better coverage
+                    enhanced, removal_metadata = self.full_audio_remover.process(enhanced, sample_rate)
+                    logger.info(f"Full audio secondary removal applied: {removal_metadata}")
+            
             # Also apply regular enhancement for ultra_aggressive mode
             if noise_level == 'ultra_aggressive' and config.get('passes', 0) > 0:
-                # Apply simple secondary removal first for more aggressive removal
-                enhanced = self.simple_remover.remove_secondary_speakers(enhanced, sample_rate)
                 
                 # Apply progressive enhancement after speaker separation
                 for pass_num in range(config.get('passes', 1)):
