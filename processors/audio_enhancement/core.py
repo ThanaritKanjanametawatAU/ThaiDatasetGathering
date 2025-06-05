@@ -118,16 +118,19 @@ class AudioEnhancer:
         # Initialize engines
         self._init_engines()
         
-        # Initialize speaker separator with stronger settings
-        separation_config = SeparationConfig(
-            suppression_strength=0.95,  # Much stronger suppression (was 0.6)
-            confidence_threshold=0.3,   # Lower threshold to detect more secondary speakers (was 0.5)
-            preserve_main_speaker=True,
-            use_sepformer=False,  # Start with False to avoid dependency issues
-            min_duration=0.05,    # Detect shorter segments (was 0.1)
-            max_duration=10.0,    # Allow longer segments (was 5.0)
-            speaker_similarity_threshold=0.5,  # Lower threshold for more sensitive detection (was 0.7)
-            detection_methods=["embedding", "vad", "energy", "spectral"]  # Use all methods
+        # Initialize speaker separator with SpeechBrain configuration
+        from .speechbrain_separator import SeparationConfig as SBSeparationConfig
+        separation_config = SBSeparationConfig(
+            confidence_threshold=0.7,   # High confidence threshold for quality
+            device="cuda" if self.use_gpu else "cpu",
+            batch_size=16,  # Optimized for RTX 5090
+            speaker_selection="energy",  # Use energy-based speaker selection
+            use_mixed_precision=True,  # Enable mixed precision for speed
+            quality_thresholds={
+                "min_pesq": 3.5,
+                "min_stoi": 0.85,
+                "max_spectral_distortion": 0.15
+            }
         )
         self.speaker_separator = SpeakerSeparator(separation_config)
         
@@ -270,8 +273,14 @@ class AudioEnhancer:
                     audio[:min(len(audio), sample_rate * 2)],  # First 2 seconds
                     sample_rate
                 )
-                if separation_result['detections']:
-                    # If we detect secondary speakers with high confidence
+                # Handle both old dict format and new SeparationOutput format
+                if hasattr(separation_result, 'num_speakers_detected'):
+                    # New format
+                    if separation_result.num_speakers_detected > 1 and not separation_result.rejected:
+                        logger.debug(f"Secondary speaker detected: {separation_result.num_speakers_detected} speakers")
+                        return 'secondary_speaker'
+                elif isinstance(separation_result, dict) and separation_result.get('detections'):
+                    # Old format (backward compatibility)
                     max_confidence = max([d.confidence for d in separation_result['detections']])
                     if max_confidence > 0.6:
                         logger.debug(f"Secondary speaker detected with confidence {max_confidence:.2f}")
@@ -410,8 +419,13 @@ class AudioEnhancer:
                     # Fallback to original method
                     logger.info(f"Advanced separation excluded: {sep_result.excluded_reason}")
                     separation_result = self.speaker_separator.separate_speakers(audio, sample_rate)
-                    enhanced = separation_result['audio']
-                    detections = separation_result['detections']
+                    # Handle both formats
+                    if hasattr(separation_result, 'audio'):
+                        enhanced = separation_result.audio
+                        detections = []  # New format doesn't use detections
+                    else:
+                        enhanced = separation_result['audio']
+                        detections = separation_result.get('detections', [])
                 else:
                     # Use advanced separation result
                     enhanced = sep_result.primary_audio
@@ -448,8 +462,13 @@ class AudioEnhancer:
             else:
                 # Use original speaker separator
                 separation_result = self.speaker_separator.separate_speakers(audio, sample_rate)
-                enhanced = separation_result['audio']
-                detections = separation_result['detections']
+                # Handle both formats
+                if hasattr(separation_result, 'audio'):
+                    enhanced = separation_result.audio
+                    detections = []  # New format doesn't use detections
+                else:
+                    enhanced = separation_result['audio']
+                    detections = separation_result.get('detections', [])
             
             # Update statistics
             if detections:
