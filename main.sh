@@ -65,7 +65,7 @@ ENABLE_DASHBOARD=""  # Disabled dashboard for now
 # Enhancement settings
 # IMPORTANT: ultra_aggressive can interfere with speaker ID clustering
 # If speaker clustering is not working correctly, try using "aggressive" instead
-ENHANCEMENT_LEVEL="ultra_aggressive"  # Changed from ultra_aggressive for better speaker ID compatibility
+ENHANCEMENT_LEVEL="aggressive"  # Changed from ultra_aggressive to preserve primary speaker
 ENHANCEMENT_GPU="--enhancement-gpu"  # Using GPU for faster processing (remove if no GPU)
 
 SECONDARY_SPEAKER_REMOVAL="--enable-secondary-speaker-removal"
@@ -206,6 +206,8 @@ CMD="python main.py \
     --enhancement-level $ENHANCEMENT_LEVEL \
     --enhancement-batch-size 10 \
     $ENHANCEMENT_GPU \
+    $SECONDARY_SPEAKER_REMOVAL \
+    $USE_AUDIO_SEPARATOR \
     $ENABLE_35DB_ENHANCEMENT \
     --target-snr $TARGET_SNR \
     --min-acceptable-snr $MIN_ACCEPTABLE_SNR \
