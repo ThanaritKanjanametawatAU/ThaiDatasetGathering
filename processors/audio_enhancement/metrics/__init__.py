@@ -23,6 +23,14 @@ from .stoi_calculator import (
     ExtendedSTOICalculator
 )
 
+from .si_sdr_calculator import (
+    SISDRCalculator,
+    SISDRError,
+    SISDRResult,
+    PermutationInvariantSDR,
+    GPUSISDRCalculator
+)
+
 __all__ = [
     # PESQ
     'PESQCalculator',
@@ -35,5 +43,11 @@ __all__ = [
     'STOICalculator',
     'STOIError',
     'STOIResult',
-    'ExtendedSTOICalculator'
+    'ExtendedSTOICalculator',
+    # SI-SDR
+    'SISDRCalculator',
+    'SISDRError',
+    'SISDRResult',
+    'PermutationInvariantSDR',
+    'GPUSISDRCalculator'
 ]
