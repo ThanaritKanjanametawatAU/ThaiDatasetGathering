@@ -16,11 +16,24 @@ from .pesq_calculator import (
     OptimizedPESQCalculator
 )
 
+from .stoi_calculator import (
+    STOICalculator,
+    STOIError,
+    STOIResult,
+    ExtendedSTOICalculator
+)
+
 __all__ = [
+    # PESQ
     'PESQCalculator',
     'PESQMode',
     'PESQError',
     'PESQResult',
     'GPUPESQCalculator',
-    'OptimizedPESQCalculator'
+    'OptimizedPESQCalculator',
+    # STOI
+    'STOICalculator',
+    'STOIError',
+    'STOIResult',
+    'ExtendedSTOICalculator'
 ]
