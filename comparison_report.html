@@ -1,0 +1,75 @@
+
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Audio Enhancement Comparison Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #4CAF50; color: white; }
+                tr:nth-child(even) { background-color: #f2f2f2; }
+                .significant { background-color: #ffffcc; }
+                .best { font-weight: bold; color: #4CAF50; }
+                h1, h2, h3 { color: #333; }
+            </style>
+        </head>
+        <body>
+            <h1>Audio Enhancement Comparison Report</h1>
+            <p>Generated: 2025-06-09 20:30:39</p>
+            
+            <h2>Method Scores</h2>
+            <table>
+                <tr>
+                    <th>Method</th>
+                    <th>SNR</th>
+                    <th>Overall Score</th>
+                    <th>Rank</th>
+                </tr>
+                <tr><td>noisy</td><td>4.934</td><td>4.934</td><td>4</td></tr>
+<tr><td>denoised_v1</td><td>10.955</td><td>10.955</td><td>3</td></tr>
+<tr><td>denoised_v2</td><td>18.914</td><td>18.914</td><td>1</td></tr>
+<tr><td>overprocessed</td><td>13.622</td><td>13.622</td><td>2</td></tr>
+            </table>
+            
+            <h2>Statistical Analysis</h2><h3>Pairwise Comparisons</h3><ul>
+                    <li class="">
+                        noisy_vs_denoised_v1: p=1.0000, 
+                        effect size=negligible (d=0.000)
+                    </li>
+                    
+                    <li class="">
+                        noisy_vs_denoised_v2: p=1.0000, 
+                        effect size=negligible (d=0.000)
+                    </li>
+                    
+                    <li class="">
+                        noisy_vs_overprocessed: p=1.0000, 
+                        effect size=negligible (d=0.000)
+                    </li>
+                    
+                    <li class="">
+                        denoised_v1_vs_denoised_v2: p=1.0000, 
+                        effect size=negligible (d=0.000)
+                    </li>
+                    
+                    <li class="">
+                        denoised_v1_vs_overprocessed: p=1.0000, 
+                        effect size=negligible (d=0.000)
+                    </li>
+                    
+                    <li class="">
+                        denoised_v2_vs_overprocessed: p=1.0000, 
+                        effect size=negligible (d=0.000)
+                    </li>
+                    </ul>
+            
+            <h2>Configuration</h2>
+            <ul>
+                <li>Confidence Level: 0.95</li>
+                <li>Multiple Comparison Correction: bonferroni</li>
+                <li>Bootstrap Iterations: 1000</li>
+            </ul>
+        </body>
+        </html>
+        
