@@ -10,10 +10,28 @@ from .secondary_speaker import (
     AdaptiveSecondaryDetection,
     DetectionResult
 )
+from .pattern_detector import (
+    PatternDetector,
+    TemporalPattern,
+    SpectralPattern,
+    NoiseProfile,
+    CodecArtifact,
+    PatternType,
+    PatternSeverity,
+    PatternReport
+)
 
 __all__ = [
     "OverlapDetector",
     "SecondarySpeakerDetector", 
     "AdaptiveSecondaryDetection",
-    "DetectionResult"
+    "DetectionResult",
+    "PatternDetector",
+    "TemporalPattern",
+    "SpectralPattern",
+    "NoiseProfile",
+    "CodecArtifact",
+    "PatternType",
+    "PatternSeverity",
+    "PatternReport"
 ]
