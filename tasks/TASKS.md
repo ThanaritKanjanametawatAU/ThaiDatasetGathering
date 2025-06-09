@@ -64,3 +64,73 @@ This document outlines the specific tasks required to implement the Thai audio d
     - ✅ Create sequence diagrams
     - ✅ Define API specifications
     - ✅ Document design patterns and architecture decisions
+
+## Sprint 2: Advanced Audio Processing & Quality Enhancement
+
+13. [ ] [Silero VAD Integration](task13.txt) **[HIGH PRIORITY]**
+    - [ ] Research and setup Silero VAD
+    - [ ] Implement VAD processor module
+    - [ ] Integrate with audio enhancement pipeline
+    - [ ] Implement batch processing
+    - [ ] Quality validation on Thai speech
+    - [ ] Performance optimization
+
+14. [ ] [TOPSIS Multi-Criteria Decision Making](task14.txt) **[HIGH PRIORITY]**
+    - [ ] Define quality criteria matrix
+    - [ ] Implement TOPSIS algorithm
+    - [ ] Integrate quality metrics collection
+    - [ ] Implement adaptive thresholds
+    - [ ] Create quality dashboard
+    - [ ] Implement quality-based actions
+
+## Sprint 3: Scale & Production Infrastructure
+
+15. [ ] [Production Infrastructure - Monitoring](task15.txt) **[HIGH PRIORITY]**
+    - [ ] Prometheus metrics integration
+    - [ ] Implement metrics collection layer
+    - [ ] Create Grafana dashboards
+    - [ ] Implement alerting rules
+    - [ ] Distributed tracing setup
+    - [ ] Health check endpoints
+
+16. [ ] [GPU Memory Management](task16.txt) **[HIGH PRIORITY]**
+    - [ ] GPU memory profiler and monitor
+    - [ ] Memory-efficient data loading
+    - [ ] Model memory optimization
+    - [ ] GPU-CPU memory swapping
+    - [ ] Automatic OOM recovery
+    - [ ] Multi-GPU strategy
+
+17. [ ] [Data Pipeline Orchestration](task17.txt) **[HIGH PRIORITY]**
+    - [ ] Design pipeline architecture
+    - [ ] Implement Airflow/Kubeflow DAGs
+    - [ ] Pipeline monitoring
+    - [ ] Pipeline templates
+    - [ ] Pipeline recovery mechanisms
+    - [ ] REST API for pipeline management
+
+18. [ ] [Model Registry and Versioning](task18.txt) **[MEDIUM PRIORITY]**
+    - [ ] Model registry architecture
+    - [ ] Model versioning system
+    - [ ] A/B testing framework
+    - [ ] Performance tracking
+    - [ ] Deployment manager
+    - [ ] Model lifecycle management
+
+## Sprint 4: Resilience & Optimization
+
+19. [ ] [Edge Case Handling](task19.txt) **[HIGH PRIORITY]**
+    - [ ] Corrupted audio recovery
+    - [ ] Multi-language detection
+    - [ ] Exotic format handling
+    - [ ] Automated error categorization
+    - [ ] Intelligent retry mechanism
+    - [ ] Edge case dashboard
+
+20. [ ] [Cost Optimization](task20.txt) **[HIGH PRIORITY]**
+    - [ ] Spot instance management
+    - [ ] Resource usage analytics
+    - [ ] Dynamic batch size tuning
+    - [ ] Cost-aware scheduling
+    - [ ] Resource pooling
+    - [ ] Automated optimization actions

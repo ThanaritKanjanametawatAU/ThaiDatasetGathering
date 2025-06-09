@@ -304,6 +304,9 @@ class GigaSpeech2Processor(BaseProcessor):
                 buffer = io.BytesIO()
                 if isinstance(array, list):
                     array = np.array(array, dtype=np.float32)
+                # Ensure float32 for soundfile compatibility
+                if array.dtype == np.float16:
+                    array = array.astype(np.float32)
                 sf.write(buffer, array, sampling_rate, format='WAV')
                 buffer.seek(0)
                 audio_data = buffer.read()
@@ -337,6 +340,9 @@ class GigaSpeech2Processor(BaseProcessor):
                         buffer = io.BytesIO()
                         if isinstance(array, list):
                             array = np.array(array, dtype=np.float32)
+                        # Ensure float32 for soundfile compatibility
+                        if array.dtype == np.float16:
+                            array = array.astype(np.float32)
                         sf.write(buffer, array, sampling_rate, format='WAV')
                         buffer.seek(0)
                         audio_data = buffer.read()
@@ -351,7 +357,7 @@ class GigaSpeech2Processor(BaseProcessor):
             raise ValidationError(f"Audio data must be bytes, got {type(audio_data)}")
 
         # Apply audio preprocessing through base processor
-        audio_data = self.preprocess_audio(audio_data, id_str)
+        audio_data, enhancement_metadata = self.preprocess_audio(audio_data, id_str)
 
         # Convert audio bytes to HuggingFace Audio format for proper preview functionality
         audio_dict = self.create_hf_audio_format(audio_data, id_str)

@@ -1,0 +1,380 @@
+# Task 17: Data Pipeline Orchestration with Airflow/Kubeflow
+
+## Objective
+Implement a production-grade data pipeline orchestration system using Apache Airflow or Kubeflow for automated, scalable processing of 10M+ audio samples with zero human intervention.
+
+## Detailed Steps
+
+### 1. Design Pipeline Architecture
+```python
+# Pipeline DAG Structure
+"""
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   Trigger   │────▶│  Validation  │────▶│   Download  │
+│   Dataset   │     │   & Setup    │     │   Dataset   │
+└─────────────┘     └──────────────┘     └─────────────┘
+                                               │
+                    ┌──────────────────────────┘
+                    ▼
+            ┌───────────────┐     ┌─────────────────┐
+            │  Batch Split  │────▶│ Parallel Process│
+            │  (10K chunks) │     │   (Multi-GPU)   │
+            └───────────────┘     └─────────────────┘
+                                           │
+                    ┌──────────────────────┘
+                    ▼
+            ┌───────────────┐     ┌─────────────────┐
+            │Quality Check  │────▶│  Upload to HF   │
+            │   (TOPSIS)    │     │  (Streaming)    │
+            └───────────────┘     └─────────────────┘
+"""
+```
+
+### 2. Implement Airflow DAGs
+```python
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.operators.bash import BashOperator
+from airflow.sensors.filesystem import FileSensor
+from airflow.utils.task_group import TaskGroup
+from datetime import datetime, timedelta
+
+class AudioProcessingDAG:
+    def __init__(self):
+        self.default_args = {
+            'owner': 'audio-pipeline',
+            'depends_on_past': False,
+            'start_date': datetime(2024, 1, 1),
+            'email_on_failure': True,
+            'email_on_retry': False,
+            'retries': 3,
+            'retry_delay': timedelta(minutes=5),
+            'execution_timeout': timedelta(hours=24),
+        }
+        
+    def create_dag(self, dataset_name: str) -> DAG:
+        dag = DAG(
+            f'audio_processing_{dataset_name}',
+            default_args=self.default_args,
+            description=f'Process {dataset_name} audio dataset',
+            schedule_interval='@daily',
+            catchup=False,
+            max_active_runs=1,
+            tags=['audio', 'ml', dataset_name]
+        )
+        
+        with dag:
+            # Task 1: Validate environment
+            validate_env = PythonOperator(
+                task_id='validate_environment',
+                python_callable=self.validate_environment,
+                op_kwargs={'dataset': dataset_name}
+            )
+            
+            # Task 2: Download dataset
+            download_dataset = PythonOperator(
+                task_id='download_dataset',
+                python_callable=self.download_dataset,
+                op_kwargs={'dataset': dataset_name},
+                pool='download_pool',  # Limit concurrent downloads
+            )
+            
+            # Task 3: Create processing batches
+            create_batches = PythonOperator(
+                task_id='create_batches',
+                python_callable=self.create_processing_batches,
+                op_kwargs={'dataset': dataset_name, 'batch_size': 10000}
+            )
+            
+            # Task Group: Parallel processing
+            with TaskGroup(group_id='parallel_processing') as process_group:
+                # Dynamic task generation based on batches
+                process_tasks = []
+                for i in range(10):  # Assuming 10 parallel workers
+                    process_task = PythonOperator(
+                        task_id=f'process_batch_{i}',
+                        python_callable=self.process_batch,
+                        op_kwargs={
+                            'dataset': dataset_name,
+                            'worker_id': i,
+                            'gpu_id': i % 4  # Distribute across 4 GPUs
+                        },
+                        pool='gpu_pool',
+                        queue='gpu_queue'
+                    )
+                    process_tasks.append(process_task)
+            
+            # Task 4: Quality validation
+            quality_check = PythonOperator(
+                task_id='quality_validation',
+                python_callable=self.validate_quality,
+                op_kwargs={'dataset': dataset_name},
+                trigger_rule='all_success'
+            )
+            
+            # Task 5: Upload to HuggingFace
+            upload_hf = PythonOperator(
+                task_id='upload_huggingface',
+                python_callable=self.upload_to_huggingface,
+                op_kwargs={'dataset': dataset_name},
+                pool='upload_pool'
+            )
+            
+            # Task 6: Cleanup
+            cleanup = BashOperator(
+                task_id='cleanup_temp_files',
+                bash_command=f'rm -rf /tmp/audio_processing/{dataset_name}/*',
+                trigger_rule='all_done'
+            )
+            
+            # Define dependencies
+            validate_env >> download_dataset >> create_batches >> process_group
+            process_group >> quality_check >> upload_hf >> cleanup
+            
+        return dag
+```
+
+### 3. Implement Kubeflow Pipeline Alternative
+```python
+import kfp
+from kfp import dsl
+from kfp.components import func_to_container_op
+
+class KubeflowAudioPipeline:
+    @staticmethod
+    @func_to_container_op
+    def download_dataset_op(dataset_name: str, output_path: str) -> str:
+        """Download dataset component"""
+        import json
+        # Implementation here
+        return json.dumps({'status': 'completed', 'path': output_path})
+    
+    @staticmethod
+    @func_to_container_op
+    def process_audio_batch_op(
+        input_path: str, 
+        batch_id: int, 
+        gpu_id: int,
+        enhancement_config: dict
+    ) -> str:
+        """Process audio batch with GPU acceleration"""
+        # Implementation here
+        return json.dumps({'status': 'completed', 'processed': 10000})
+    
+    @dsl.pipeline(
+        name='Audio Processing Pipeline',
+        description='Process Thai audio datasets at scale'
+    )
+    def create_pipeline(self, dataset_name: str, num_gpus: int = 4):
+        # Step 1: Download dataset
+        download_task = self.download_dataset_op(
+            dataset_name=dataset_name,
+            output_path='/data/raw'
+        )
+        download_task.set_memory_limit('32G')
+        download_task.set_cpu_limit('8')
+        
+        # Step 2: Parallel processing with GPU
+        process_tasks = []
+        for gpu_id in range(num_gpus):
+            process_task = self.process_audio_batch_op(
+                input_path=download_task.output,
+                batch_id=gpu_id,
+                gpu_id=gpu_id,
+                enhancement_config={
+                    'level': 'aggressive',
+                    'enable_vad': True,
+                    'enable_separation': True
+                }
+            )
+            
+            # Set GPU resources
+            process_task.set_gpu_limit(1)
+            process_task.set_memory_limit('64G')
+            process_task.add_node_selector_constraint(
+                'cloud.google.com/gke-accelerator', 
+                'nvidia-tesla-v100'
+            )
+            
+            process_tasks.append(process_task)
+        
+        # Step 3: Aggregate results
+        with dsl.ParallelFor(process_tasks) as task:
+            aggregate_task = self.aggregate_results_op(
+                results=task.output
+            )
+        
+        return aggregate_task
+```
+
+### 4. Implement Pipeline Monitoring
+```python
+class PipelineMonitor:
+    def __init__(self, backend='airflow'):
+        self.backend = backend
+        self.metrics_collector = MetricsCollector()
+        
+    def track_pipeline_run(self, pipeline_id: str, run_id: str):
+        """Track pipeline execution metrics"""
+        metrics = {
+            'pipeline_id': pipeline_id,
+            'run_id': run_id,
+            'start_time': datetime.now(),
+            'tasks': {}
+        }
+        
+        # Monitor task execution
+        while self.is_pipeline_running(run_id):
+            task_states = self.get_task_states(run_id)
+            
+            for task_id, state in task_states.items():
+                if task_id not in metrics['tasks']:
+                    metrics['tasks'][task_id] = {
+                        'start_time': None,
+                        'end_time': None,
+                        'duration': None,
+                        'status': 'pending',
+                        'retries': 0
+                    }
+                
+                # Update task metrics
+                task_metrics = metrics['tasks'][task_id]
+                task_metrics['status'] = state['status']
+                task_metrics['retries'] = state.get('try_number', 1) - 1
+                
+                if state['status'] == 'running' and not task_metrics['start_time']:
+                    task_metrics['start_time'] = datetime.now()
+                elif state['status'] in ['success', 'failed'] and not task_metrics['end_time']:
+                    task_metrics['end_time'] = datetime.now()
+                    task_metrics['duration'] = (
+                        task_metrics['end_time'] - task_metrics['start_time']
+                    ).total_seconds()
+            
+            time.sleep(10)  # Check every 10 seconds
+        
+        return metrics
+```
+
+### 5. Create Pipeline Templates
+```python
+class PipelineTemplates:
+    @staticmethod
+    def create_dataset_pipeline_config(dataset_name: str) -> dict:
+        """Create dataset-specific pipeline configuration"""
+        configs = {
+            'gigaspeech2': {
+                'batch_size': 50000,
+                'num_workers': 20,
+                'gpu_per_worker': 1,
+                'memory_per_worker': '128G',
+                'timeout_hours': 48,
+                'quality_threshold': 0.7
+            },
+            'mozilla_cv': {
+                'batch_size': 10000,
+                'num_workers': 10,
+                'gpu_per_worker': 1,
+                'memory_per_worker': '64G',
+                'timeout_hours': 24,
+                'quality_threshold': 0.6
+            },
+            'processed_voice_th': {
+                'batch_size': 20000,
+                'num_workers': 15,
+                'gpu_per_worker': 1,
+                'memory_per_worker': '96G',
+                'timeout_hours': 36,
+                'quality_threshold': 0.65
+            }
+        }
+        
+        return configs.get(dataset_name, configs['mozilla_cv'])
+```
+
+### 6. Implement Pipeline Recovery
+```python
+class PipelineRecovery:
+    def __init__(self):
+        self.checkpoint_manager = CheckpointManager()
+        
+    def recover_failed_pipeline(self, pipeline_id: str, run_id: str):
+        """Recover from pipeline failure"""
+        # Get failure point
+        failed_tasks = self.get_failed_tasks(run_id)
+        
+        for task in failed_tasks:
+            # Check if task is recoverable
+            if self.is_recoverable(task):
+                # Get last checkpoint
+                checkpoint = self.checkpoint_manager.get_task_checkpoint(
+                    pipeline_id, 
+                    run_id, 
+                    task['task_id']
+                )
+                
+                if checkpoint:
+                    # Resume from checkpoint
+                    self.resume_task_from_checkpoint(task, checkpoint)
+                else:
+                    # Restart task
+                    self.restart_task(task)
+            else:
+                # Mark pipeline as failed
+                self.mark_pipeline_failed(pipeline_id, run_id, task)
+                break
+```
+
+### 7. Create Pipeline REST API
+```python
+from flask import Flask, request, jsonify
+from flask_restful import Api, Resource
+
+class PipelineAPI:
+    def __init__(self):
+        self.app = Flask(__name__)
+        self.api = Api(self.app)
+        self.setup_routes()
+        
+    def setup_routes(self):
+        self.api.add_resource(PipelineTrigger, '/pipeline/trigger')
+        self.api.add_resource(PipelineStatus, '/pipeline/status/<run_id>')
+        self.api.add_resource(PipelineMetrics, '/pipeline/metrics/<run_id>')
+        
+class PipelineTrigger(Resource):
+    def post(self):
+        data = request.get_json()
+        dataset_name = data.get('dataset_name')
+        config = data.get('config', {})
+        
+        # Trigger pipeline
+        run_id = trigger_pipeline(dataset_name, config)
+        
+        return jsonify({
+            'status': 'triggered',
+            'run_id': run_id,
+            'dataset': dataset_name,
+            'estimated_duration_hours': estimate_duration(dataset_name)
+        })
+```
+
+## Acceptance Criteria
+- Airflow/Kubeflow pipeline successfully orchestrates entire workflow
+- Automatic retry and recovery from failures
+- Parallel processing across multiple GPUs/nodes
+- Pipeline monitoring and alerting implemented
+- REST API for pipeline management
+- Zero human intervention after pipeline trigger
+- Support for 10M+ samples with horizontal scaling
+
+## Dependencies
+- Task 1: Project Setup
+- Task 13: Silero VAD Integration
+- Task 14: TOPSIS Quality Scoring
+- Task 15: Monitoring Infrastructure
+- Task 16: GPU Memory Management
+
+## Estimated Effort
+- 18-20 hours
+
+## Priority
+- HIGH - Essential for production scale automation

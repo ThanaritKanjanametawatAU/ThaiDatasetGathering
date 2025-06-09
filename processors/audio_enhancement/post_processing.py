@@ -88,6 +88,11 @@ class SpectralSmoother:
         Returns:
             Spectrally smoothed audio
         """
+        # Convert float16 to float32 for scipy compatibility
+        original_dtype = audio.dtype
+        if audio.dtype == np.float16:
+            audio = audio.astype(np.float32)
+            
         # STFT parameters
         n_fft = 2048
         hop_length = n_fft // 4
@@ -129,7 +134,7 @@ class SpectralSmoother:
         elif len(smoothed) < len(audio):
             smoothed = np.pad(smoothed, (0, len(audio) - len(smoothed)))
             
-        return smoothed.astype(audio.dtype)
+        return smoothed.astype(original_dtype)
 
 
 class LevelNormalizer:

@@ -63,12 +63,18 @@ ENABLE_STREAMING="--streaming"
 ENABLE_DASHBOARD=""  # Disabled dashboard for now
 
 # Enhancement settings
-# IMPORTANT: ultra_aggressive can interfere with speaker ID clustering
-# If speaker clustering is not working correctly, try using "aggressive" instead
-ENHANCEMENT_LEVEL="aggressive"  # Changed from ultra_aggressive to preserve primary speaker
+# Using selective_secondary_removal for professional secondary speaker removal
+# This uses the SelectiveSecondaryRemoval class which:
+# - Detects secondary speakers intelligently (not blind time-based removal)
+# - Completely removes detected secondary speakers (sets to silence)
+# - Preserves ALL primary speaker content
+# This addresses the issue where the system was "removing the last 2 seconds of the audio which remove the primary speaker too"
+ENHANCEMENT_LEVEL="selective_secondary_removal"  # Professional secondary speaker removal
 ENHANCEMENT_GPU="--enhancement-gpu"  # Using GPU for faster processing (remove if no GPU)
 
-SECONDARY_SPEAKER_REMOVAL="--enable-secondary-speaker-removal"
+# Secondary speaker removal is integrated into selective_secondary_removal
+# No need for separate --enable-secondary-speaker-removal flag
+SECONDARY_SPEAKER_REMOVAL=""  # Integrated into selective_secondary_removal
 USE_AUDIO_SEPARATOR=""  # Set to "--use-audio-separator" to enable audio-separator method
 
 

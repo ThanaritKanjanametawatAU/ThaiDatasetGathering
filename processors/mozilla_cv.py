@@ -435,7 +435,7 @@ class MozillaCommonVoiceProcessor(BaseProcessor):
             raise ValidationError("Missing audio data")
 
         # Apply audio preprocessing through base processor
-        audio_data = self.preprocess_audio(audio_data, id_str)
+        audio_data, enhancement_metadata = self.preprocess_audio(audio_data, id_str)
 
         # Convert audio bytes to HuggingFace Audio format for proper preview functionality
         audio_dict = self.create_hf_audio_format(audio_data, id_str)

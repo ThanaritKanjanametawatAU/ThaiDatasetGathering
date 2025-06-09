@@ -203,7 +203,15 @@ class SpeechBrainSeparator:
                     rejection_reason="Empty audio"
                 )
             
-            # Convert to tensor
+            # Check for NaN/Inf values
+            if not np.isfinite(audio_array).all():
+                # Clean the audio
+                audio_array = np.nan_to_num(audio_array, nan=0.0, posinf=0.0, neginf=0.0)
+                logger.warning("Input audio contained NaN/Inf values, replaced with zeros")
+            
+            # Convert to tensor - ensure float32 to avoid float16 issues
+            if audio_array.dtype == np.float16:
+                audio_array = audio_array.astype(np.float32)
             audio_tensor = torch.from_numpy(audio_array).float()
             if audio_tensor.dim() == 1:
                 audio_tensor = audio_tensor.unsqueeze(0)
@@ -239,7 +247,7 @@ class SpeechBrainSeparator:
                 rejected=rejection_reason is not None,
                 rejection_reason=rejection_reason,
                 processing_time_ms=processing_time_ms,
-                num_speakers_detected=separated_sources.shape[1]
+                num_speakers_detected=separated_sources.shape[2]
             )
             
         except Exception as e:
@@ -360,6 +368,47 @@ class SpeechBrainSeparator:
         confidence = similarities[primary_idx]
         
         return primary_audio, confidence
+    
+    def separate_all_speakers(self, audio: np.ndarray, sample_rate: int) -> List[np.ndarray]:
+        """
+        Separate all speakers in the audio (public interface for complete_separation).
+        
+        Args:
+            audio: Input audio signal
+            sample_rate: Sample rate in Hz
+            
+        Returns:
+            List of separated audio sources as numpy arrays
+        """
+        try:
+            # Ensure float32
+            if audio.dtype == np.float16:
+                audio = audio.astype(np.float32)
+            elif audio.dtype != np.float32:
+                audio = audio.astype(np.float32)
+            
+            # Convert to tensor
+            audio_tensor = torch.from_numpy(audio).float()
+            if audio_tensor.dim() == 1:
+                audio_tensor = audio_tensor.unsqueeze(0)
+            
+            # Move to device
+            audio_tensor = audio_tensor.to(self.config.device)
+            
+            # Perform separation
+            separated_sources = self._perform_separation(audio_tensor)
+            
+            # Convert each source to numpy array
+            sources_list = []
+            for i in range(separated_sources.shape[2]):
+                source = separated_sources[0, :, i].cpu().numpy()
+                sources_list.append(source)
+            
+            return sources_list
+            
+        except Exception as e:
+            logger.error(f"Failed to separate speakers: {e}")
+            return [audio]  # Return original on failure
     
     def _calculate_metrics(self, original: np.ndarray, processed: np.ndarray) -> Dict[str, float]:
         """

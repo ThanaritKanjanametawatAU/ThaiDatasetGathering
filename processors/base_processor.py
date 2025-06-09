@@ -178,25 +178,33 @@ class BaseProcessor(ABC):
             buffer = io.BytesIO(audio_data)
             audio_array, sample_rate = sf.read(buffer)
             
+            # Ensure audio is float32 (AudioEnhancer doesn't support float16)
+            if audio_array.dtype == np.float16:
+                audio_array = audio_array.astype(np.float32)
+            
             # Apply enhancement
-            enhanced_array, metadata = self.audio_enhancer.enhance_audio(
-                audio_array, sample_rate
+            enhanced_array, metadata = self.audio_enhancer.enhance(
+                audio_array, sample_rate, return_metadata=True
             )
             
             # Update statistics
-            self._update_enhancement_stats(metadata)
+            # TODO: Implement _update_enhancement_stats method
+            # self._update_enhancement_stats(metadata)
             
             # Convert back to bytes
             enhanced_buffer = io.BytesIO()
+            # Ensure float32 for soundfile compatibility
+            if enhanced_array.dtype == np.float16:
+                enhanced_array = enhanced_array.astype(np.float32)
             sf.write(enhanced_buffer, enhanced_array, sample_rate, format='WAV')
             enhanced_buffer.seek(0)
             
             # Log enhancement results
             if metadata.get('snr_improvement', 0) > 0:
                 self.logger.debug(
-                    f"Enhanced {sample_id}: SNR {metadata['original_snr']:.1f} → "
-                    f"{metadata['enhanced_snr']:.1f} dB (+{metadata['snr_improvement']:.1f}dB) "
-                    f"in {metadata['processing_time_ms']:.1f}ms"
+                    f"Enhanced {sample_id}: SNR {metadata.get('snr_before', 0):.1f} → "
+                    f"{metadata.get('snr_after', 0):.1f} dB (+{metadata['snr_improvement']:.1f}dB) "
+                    f"in {metadata.get('processing_time', 0)*1000:.1f}ms"
                 )
                 
             return enhanced_buffer.read(), metadata
@@ -640,6 +648,9 @@ class BaseProcessor(ABC):
             
             # Convert back to bytes
             buffer_out = io.BytesIO()
+            # Ensure float32 for soundfile compatibility
+            if enhanced_array.dtype == np.float16:
+                enhanced_array = enhanced_array.astype(np.float32)
             sf.write(buffer_out, enhanced_array, sample_rate, format='WAV')
             buffer_out.seek(0)
             enhanced_bytes = buffer_out.read()
@@ -976,6 +987,9 @@ class BaseProcessor(ABC):
                         
                     buffer = io.BytesIO()
                     sampling_rate = audio_data.get('sampling_rate', 16000)
+                    # Ensure float32 for soundfile compatibility
+                    if array.dtype == np.float16:
+                        array = array.astype(np.float32)
                     sf.write(buffer, array, sampling_rate, format='wav')
                     buffer.seek(0)
                     return buffer.read()

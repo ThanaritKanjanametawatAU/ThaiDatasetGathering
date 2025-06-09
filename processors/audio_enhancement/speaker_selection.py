@@ -56,6 +56,9 @@ class SpeakerSelector:
         Returns:
             Primary speaker index and confidence score
         """
+        if len(sources) == 0:
+            raise IndexError("Cannot select speaker from empty source list")
+            
         if len(sources) == 1:
             return 0, 1.0
             
@@ -85,6 +88,11 @@ class SpeakerSelector:
         Returns:
             SpeakerCharacteristics object
         """
+        # Check for NaN/Inf values
+        if not np.isfinite(audio).all():
+            # Replace NaN/Inf with zeros
+            audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+        
         # Energy
         energy = np.sqrt(np.mean(audio ** 2))
         
@@ -102,8 +110,11 @@ class SpeakerSelector:
             pitch_mean = pitch_std = 0
         
         # Speaking rate (zero-crossing rate as proxy)
-        zcr = librosa.feature.zero_crossing_rate(audio)[0]
-        speaking_rate = np.mean(zcr)
+        try:
+            zcr = librosa.feature.zero_crossing_rate(audio)[0]
+            speaking_rate = np.mean(zcr)
+        except:
+            speaking_rate = 0
         
         # Duration (non-silence duration)
         silence_threshold = 0.01 * np.max(np.abs(audio))
@@ -112,9 +123,12 @@ class SpeakerSelector:
         silence_ratio = 1 - (np.sum(non_silence) / len(audio))
         
         # Spectral centroid
-        spectral_centroid = np.mean(
-            librosa.feature.spectral_centroid(y=audio, sr=self.sample_rate)[0]
-        )
+        try:
+            spectral_centroid = np.mean(
+                librosa.feature.spectral_centroid(y=audio, sr=self.sample_rate)[0]
+            )
+        except:
+            spectral_centroid = 0
         
         return SpeakerCharacteristics(
             energy=float(energy),

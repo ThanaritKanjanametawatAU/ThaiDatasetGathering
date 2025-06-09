@@ -1,0 +1,6 @@
+Sample ID: unknown
+Duration: 3.22s
+Sample rate: 16000Hz
+Transcript: N/A
+Shape: (51522,)
+URL: hf://datasets/speechcolab/gigaspeech2@8a8c28177b56a880e4826d0a1da46a92416e8e6a/data/th/train/0.tar.gz

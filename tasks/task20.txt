@@ -1,0 +1,546 @@
+# Task 20: Cost Optimization and Resource Management
+
+## Objective
+Implement comprehensive cost optimization strategies including spot instance management, resource usage analytics, and dynamic batch size tuning to minimize costs while processing 10M+ audio samples.
+
+## Detailed Steps
+
+### 1. Spot Instance Management System
+```python
+import boto3
+from kubernetes import client, config
+from typing import Dict, List, Optional
+import threading
+
+class SpotInstanceManager:
+    def __init__(self, cloud_provider='aws'):
+        self.cloud_provider = cloud_provider
+        self.spot_instances = {}
+        self.price_history = []
+        self.interruption_handler = None
+        
+        if cloud_provider == 'aws':
+            self.ec2_client = boto3.client('ec2')
+            self.setup_interruption_handler()
+    
+    def request_spot_instances(self, 
+                             instance_config: Dict[str, Any]) -> List[str]:
+        """Request spot instances with optimal pricing"""
+        if self.cloud_provider == 'aws':
+            # Get current spot prices
+            spot_prices = self.get_spot_prices(instance_config['instance_type'])
+            
+            # Select best availability zone
+            best_az = self.select_best_az(spot_prices)
+            
+            # Calculate bid price (e.g., 20% above current price)
+            bid_price = spot_prices[best_az] * 1.2
+            
+            # Request spot instances
+            response = self.ec2_client.request_spot_instances(
+                InstanceCount=instance_config['count'],
+                LaunchSpecification={
+                    'ImageId': instance_config['ami_id'],
+                    'InstanceType': instance_config['instance_type'],
+                    'KeyName': instance_config['key_name'],
+                    'SecurityGroups': instance_config['security_groups'],
+                    'Placement': {'AvailabilityZone': best_az},
+                    'UserData': self._generate_user_data(instance_config)
+                },
+                SpotPrice=str(bid_price),
+                Type='persistent'
+            )
+            
+            # Track instances
+            instance_ids = []
+            for request in response['SpotInstanceRequests']:
+                request_id = request['SpotInstanceRequestId']
+                self.spot_instances[request_id] = {
+                    'status': 'pending',
+                    'bid_price': bid_price,
+                    'az': best_az,
+                    'created_at': datetime.now()
+                }
+                instance_ids.append(request_id)
+            
+            return instance_ids
+    
+    def setup_interruption_handler(self):
+        """Setup handler for spot instance interruption notices"""
+        def check_interruption():
+            while True:
+                for instance_id, info in self.spot_instances.items():
+                    if info['status'] == 'running':
+                        # Check for interruption notice
+                        if self._check_interruption_notice(instance_id):
+                            logger.warning(f"Spot instance {instance_id} interruption notice received")
+                            self._handle_interruption(instance_id)
+                
+                time.sleep(5)  # Check every 5 seconds
+        
+        self.interruption_handler = threading.Thread(
+            target=check_interruption, 
+            daemon=True
+        )
+        self.interruption_handler.start()
+    
+    def _handle_interruption(self, instance_id: str):
+        """Handle spot instance interruption gracefully"""
+        # 1. Stop accepting new work
+        self._drain_instance(instance_id)
+        
+        # 2. Save current state
+        checkpoint = self._save_instance_checkpoint(instance_id)
+        
+        # 3. Request replacement instance
+        replacement_id = self._request_replacement_instance(instance_id)
+        
+        # 4. Transfer work to replacement
+        if replacement_id:
+            self._transfer_work(instance_id, replacement_id, checkpoint)
+        
+        # 5. Cleanup
+        self._cleanup_instance(instance_id)
+```
+
+### 2. Resource Usage Analytics
+```python
+class ResourceUsageAnalytics:
+    def __init__(self):
+        self.usage_data = []
+        self.cost_data = []
+        self.optimization_recommendations = []
+        
+    def track_resource_usage(self, 
+                           resource_type: str,
+                           resource_id: str,
+                           metrics: Dict[str, float]):
+        """Track resource usage metrics"""
+        usage_record = {
+            'timestamp': datetime.now(),
+            'resource_type': resource_type,
+            'resource_id': resource_id,
+            'metrics': metrics,
+            'cost_per_hour': self._calculate_cost(resource_type, metrics)
+        }
+        
+        self.usage_data.append(usage_record)
+        
+        # Analyze for optimization opportunities
+        if len(self.usage_data) % 100 == 0:
+            self._analyze_usage_patterns()
+    
+    def _analyze_usage_patterns(self):
+        """Analyze usage patterns for cost optimization"""
+        # Group by resource type
+        by_type = {}
+        for record in self.usage_data[-1000:]:  # Last 1000 records
+            rtype = record['resource_type']
+            if rtype not in by_type:
+                by_type[rtype] = []
+            by_type[rtype].append(record)
+        
+        # Analyze each resource type
+        for rtype, records in by_type.items():
+            if rtype == 'gpu':
+                self._analyze_gpu_usage(records)
+            elif rtype == 'cpu':
+                self._analyze_cpu_usage(records)
+            elif rtype == 'memory':
+                self._analyze_memory_usage(records)
+            elif rtype == 'storage':
+                self._analyze_storage_usage(records)
+    
+    def _analyze_gpu_usage(self, records: List[Dict]):
+        """Analyze GPU usage for optimization"""
+        # Calculate average utilization
+        utilizations = [r['metrics'].get('gpu_utilization', 0) for r in records]
+        avg_utilization = np.mean(utilizations)
+        
+        # Generate recommendations
+        if avg_utilization < 50:
+            self.optimization_recommendations.append({
+                'type': 'gpu_underutilized',
+                'message': f'GPU utilization averaging {avg_utilization:.1f}%',
+                'recommendation': 'Consider using smaller GPU instances or increasing batch size',
+                'potential_savings': self._estimate_savings('gpu', avg_utilization)
+            })
+        elif avg_utilization > 90:
+            self.optimization_recommendations.append({
+                'type': 'gpu_overutilized',
+                'message': f'GPU utilization averaging {avg_utilization:.1f}%',
+                'recommendation': 'Consider using larger GPU instances or distributing load',
+                'impact': 'May be causing processing bottlenecks'
+            })
+    
+    def generate_cost_report(self, time_period: str = 'daily') -> Dict[str, Any]:
+        """Generate comprehensive cost report"""
+        report = {
+            'period': time_period,
+            'total_cost': sum(r['cost_per_hour'] for r in self.usage_data),
+            'by_resource_type': self._aggregate_costs_by_type(),
+            'by_operation': self._aggregate_costs_by_operation(),
+            'cost_trends': self._calculate_cost_trends(),
+            'optimization_opportunities': self.optimization_recommendations,
+            'projected_savings': self._calculate_projected_savings()
+        }
+        
+        return report
+```
+
+### 3. Dynamic Batch Size Auto-Tuning
+```python
+class DynamicBatchSizeTuner:
+    def __init__(self):
+        self.performance_history = []
+        self.optimal_batch_sizes = {}
+        self.tuning_enabled = True
+        
+    def auto_tune_batch_size(self,
+                           operation: str,
+                           initial_batch_size: int,
+                           constraints: Dict[str, Any]) -> int:
+        """Automatically tune batch size for optimal cost/performance"""
+        # Get historical performance data
+        history = self._get_operation_history(operation)
+        
+        if len(history) < 10:
+            # Not enough data, use initial batch size
+            return initial_batch_size
+        
+        # Define optimization objective
+        def objective(batch_size):
+            # Estimate performance metrics
+            throughput = self._estimate_throughput(batch_size, history)
+            latency = self._estimate_latency(batch_size, history)
+            memory_usage = self._estimate_memory_usage(batch_size, history)
+            cost = self._estimate_cost(batch_size, history)
+            
+            # Multi-objective optimization (minimize cost while meeting constraints)
+            if latency > constraints.get('max_latency', float('inf')):
+                return float('inf')  # Constraint violation
+            
+            if memory_usage > constraints.get('max_memory', float('inf')):
+                return float('inf')  # Constraint violation
+            
+            # Cost per sample processed
+            return cost / throughput
+        
+        # Find optimal batch size using golden section search
+        optimal_size = self._golden_section_search(
+            objective,
+            constraints.get('min_batch_size', 1),
+            constraints.get('max_batch_size', 1000),
+            tolerance=0.01
+        )
+        
+        # Store optimal size
+        self.optimal_batch_sizes[operation] = {
+            'batch_size': optimal_size,
+            'timestamp': datetime.now(),
+            'constraints': constraints
+        }
+        
+        return int(optimal_size)
+    
+    def track_performance(self,
+                         operation: str,
+                         batch_size: int,
+                         metrics: Dict[str, float]):
+        """Track performance metrics for learning"""
+        self.performance_history.append({
+            'operation': operation,
+            'batch_size': batch_size,
+            'timestamp': datetime.now(),
+            'throughput': metrics.get('samples_per_second', 0),
+            'latency': metrics.get('latency_ms', 0),
+            'memory_usage': metrics.get('memory_mb', 0),
+            'gpu_utilization': metrics.get('gpu_utilization', 0),
+            'cost_per_sample': metrics.get('cost_per_sample', 0)
+        })
+        
+        # Trigger re-tuning if performance degrades
+        if self._should_retune(operation):
+            logger.info(f"Re-tuning batch size for {operation}")
+            self.optimal_batch_sizes.pop(operation, None)
+```
+
+### 4. Cost-Aware Processing Scheduler
+```python
+class CostAwareScheduler:
+    def __init__(self):
+        self.job_queue = []
+        self.resource_costs = {}
+        self.scheduling_policy = 'cost_optimized'
+        
+    def schedule_job(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        """Schedule job based on cost optimization"""
+        # Estimate job resource requirements
+        resources_needed = self._estimate_resources(job)
+        
+        # Get available resources and their costs
+        available_resources = self._get_available_resources()
+        
+        # Find optimal resource allocation
+        allocation = self._optimize_allocation(
+            resources_needed,
+            available_resources,
+            job.get('constraints', {})
+        )
+        
+        # Schedule based on policy
+        if self.scheduling_policy == 'cost_optimized':
+            schedule = self._cost_optimized_schedule(job, allocation)
+        elif self.scheduling_policy == 'performance_optimized':
+            schedule = self._performance_optimized_schedule(job, allocation)
+        else:
+            schedule = self._balanced_schedule(job, allocation)
+        
+        return schedule
+    
+    def _cost_optimized_schedule(self, 
+                                job: Dict[str, Any],
+                                allocation: Dict[str, Any]) -> Dict[str, Any]:
+        """Create cost-optimized schedule"""
+        # Check for spot instance availability
+        spot_available = self._check_spot_availability(allocation)
+        
+        if spot_available:
+            # Use spot instances for cost savings
+            schedule = {
+                'job_id': job['id'],
+                'resources': {
+                    'instance_type': 'spot',
+                    'gpu_type': allocation['gpu_type'],
+                    'cpu_cores': allocation['cpu_cores'],
+                    'memory_gb': allocation['memory_gb']
+                },
+                'estimated_cost': self._calculate_spot_cost(allocation),
+                'estimated_duration': self._estimate_duration(job, allocation),
+                'start_time': self._find_cheapest_time_slot(allocation)
+            }
+        else:
+            # Use on-demand with cost optimization
+            schedule = {
+                'job_id': job['id'],
+                'resources': allocation,
+                'estimated_cost': self._calculate_on_demand_cost(allocation),
+                'estimated_duration': self._estimate_duration(job, allocation),
+                'start_time': datetime.now()  # Start immediately
+            }
+        
+        return schedule
+    
+    def _find_cheapest_time_slot(self, 
+                                allocation: Dict[str, Any],
+                                window_hours: int = 24) -> datetime:
+        """Find cheapest time slot to run job"""
+        # Get spot price predictions
+        price_predictions = self._predict_spot_prices(
+            allocation['instance_type'],
+            window_hours
+        )
+        
+        # Find minimum price window
+        min_price = float('inf')
+        best_time = datetime.now()
+        
+        for time_slot, price in price_predictions.items():
+            if price < min_price:
+                min_price = price
+                best_time = time_slot
+        
+        return best_time
+```
+
+### 5. Resource Pooling and Sharing
+```python
+class ResourcePool:
+    def __init__(self):
+        self.pools = {
+            'gpu': GPUPool(),
+            'cpu': CPUPool(),
+            'memory': MemoryPool(),
+            'storage': StoragePool()
+        }
+        self.allocation_history = []
+        
+    def allocate_resources(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Allocate resources from pool with cost optimization"""
+        allocation = {}
+        
+        # Try to allocate from each pool
+        for resource_type, amount_needed in request.items():
+            pool = self.pools.get(resource_type)
+            if not pool:
+                continue
+                
+            # Try to allocate
+            allocated = pool.allocate(amount_needed)
+            if not allocated:
+                # Rollback previous allocations
+                self._rollback_allocation(allocation)
+                return None
+                
+            allocation[resource_type] = allocated
+        
+        # Record allocation
+        self.allocation_history.append({
+            'timestamp': datetime.now(),
+            'request': request,
+            'allocation': allocation,
+            'cost_per_hour': self._calculate_allocation_cost(allocation)
+        })
+        
+        return allocation
+    
+    def optimize_pool_configuration(self):
+        """Optimize resource pool configuration based on usage"""
+        # Analyze allocation history
+        usage_patterns = self._analyze_allocation_patterns()
+        
+        # Generate optimization recommendations
+        for resource_type, pool in self.pools.items():
+            pattern = usage_patterns.get(resource_type, {})
+            
+            if pattern.get('avg_utilization', 0) < 50:
+                # Underutilized - reduce pool size
+                reduction = int(pool.size * 0.2)
+                logger.info(f"Reducing {resource_type} pool by {reduction} units")
+                pool.resize(pool.size - reduction)
+                
+            elif pattern.get('allocation_failures', 0) > 10:
+                # Over-subscribed - increase pool size
+                increase = int(pool.size * 0.3)
+                logger.info(f"Increasing {resource_type} pool by {increase} units")
+                pool.resize(pool.size + increase)
+```
+
+### 6. Cost Monitoring Dashboard
+```python
+class CostMonitoringDashboard:
+    def __init__(self):
+        self.cost_metrics = []
+        self.budget_alerts = []
+        self.cost_predictions = []
+        
+    def update_metrics(self, metrics: Dict[str, Any]):
+        """Update cost metrics in real-time"""
+        self.cost_metrics.append({
+            'timestamp': datetime.now(),
+            'total_cost': metrics.get('total_cost', 0),
+            'by_resource': metrics.get('by_resource', {}),
+            'by_operation': metrics.get('by_operation', {}),
+            'samples_processed': metrics.get('samples_processed', 0),
+            'cost_per_sample': metrics.get('cost_per_sample', 0)
+        })
+        
+        # Check budget alerts
+        self._check_budget_alerts()
+        
+        # Update predictions
+        self._update_cost_predictions()
+    
+    def _check_budget_alerts(self):
+        """Check if any budget thresholds are exceeded"""
+        current_cost = self.cost_metrics[-1]['total_cost']
+        
+        for alert in self.budget_alerts:
+            if current_cost > alert['threshold']:
+                self._trigger_alert(alert, current_cost)
+    
+    def generate_dashboard_data(self) -> Dict[str, Any]:
+        """Generate data for cost monitoring dashboard"""
+        return {
+            'current_metrics': self.cost_metrics[-1] if self.cost_metrics else {},
+            'historical_trends': self._calculate_trends(),
+            'cost_breakdown': self._generate_cost_breakdown(),
+            'optimization_suggestions': self._generate_suggestions(),
+            'budget_status': self._get_budget_status(),
+            'predictions': self.cost_predictions,
+            'savings_achieved': self._calculate_savings()
+        }
+```
+
+### 7. Automated Cost Optimization Actions
+```python
+class AutomatedCostOptimizer:
+    def __init__(self):
+        self.optimization_rules = []
+        self.actions_taken = []
+        
+    def add_optimization_rule(self, rule: Dict[str, Any]):
+        """Add automated optimization rule"""
+        self.optimization_rules.append({
+            'name': rule['name'],
+            'condition': rule['condition'],
+            'action': rule['action'],
+            'cooldown_minutes': rule.get('cooldown', 30),
+            'last_triggered': None
+        })
+    
+    def evaluate_and_optimize(self, current_state: Dict[str, Any]):
+        """Evaluate rules and take optimization actions"""
+        for rule in self.optimization_rules:
+            # Check cooldown
+            if rule['last_triggered']:
+                cooldown_elapsed = (datetime.now() - rule['last_triggered']).seconds / 60
+                if cooldown_elapsed < rule['cooldown_minutes']:
+                    continue
+            
+            # Evaluate condition
+            if self._evaluate_condition(rule['condition'], current_state):
+                # Execute action
+                logger.info(f"Triggering optimization rule: {rule['name']}")
+                
+                action_result = self._execute_action(rule['action'], current_state)
+                
+                # Record action
+                self.actions_taken.append({
+                    'rule': rule['name'],
+                    'timestamp': datetime.now(),
+                    'state_before': current_state,
+                    'action': rule['action'],
+                    'result': action_result
+                })
+                
+                # Update last triggered time
+                rule['last_triggered'] = datetime.now()
+    
+    def _execute_action(self, action: Dict[str, Any], state: Dict[str, Any]) -> Any:
+        """Execute optimization action"""
+        action_type = action['type']
+        
+        if action_type == 'scale_down':
+            return self._scale_down_resources(action['parameters'])
+        elif action_type == 'switch_to_spot':
+            return self._switch_to_spot_instances(action['parameters'])
+        elif action_type == 'reduce_batch_size':
+            return self._reduce_batch_sizes(action['parameters'])
+        elif action_type == 'pause_non_critical':
+            return self._pause_non_critical_jobs(action['parameters'])
+        else:
+            logger.warning(f"Unknown action type: {action_type}")
+            return None
+```
+
+## Acceptance Criteria
+- Spot instance usage reduces costs by >50% where applicable
+- Resource usage analytics provide actionable insights
+- Batch size auto-tuning improves efficiency by >30%
+- Cost-aware scheduling reduces overall processing costs
+- Resource pooling increases utilization to >80%
+- Automated optimization reduces manual intervention
+- Real-time cost monitoring with budget alerts
+
+## Dependencies
+- Task 15: Production Infrastructure
+- Task 16: GPU Memory Management
+- Task 17: Pipeline Orchestration
+- Cloud provider APIs (AWS, GCP, Azure)
+
+## Estimated Effort
+- 18-20 hours
+
+## Priority
+- HIGH - Essential for sustainable 10M+ sample processing

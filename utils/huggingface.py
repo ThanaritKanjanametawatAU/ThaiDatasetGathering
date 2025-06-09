@@ -23,29 +23,49 @@ except ImportError:
     raise
 
 
-def read_hf_token(token_file: str) -> Optional[str]:
+def read_hf_token(token_file: str = None) -> Optional[str]:
     """
-    Read Huggingface token from file.
+    Read Huggingface token from .env file or specified file.
 
     Args:
-        token_file: Path to token file
+        token_file: Optional path to token file. If not provided, reads from .env
 
     Returns:
-        str: Huggingface token or None if file not found
+        str: Huggingface token or None if not found
     """
     try:
-        if not os.path.exists(token_file):
-            logger.error(f"Huggingface token file not found: {token_file}")
-            return None
+        # First, try to read from .env file
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('hf_token'):
+                        # Handle both "hf_token=" and "hf_token =" formats
+                        parts = line.split('=', 1)
+                        if len(parts) == 2:
+                            token = parts[1].strip()
+                            if token:
+                                logger.info("Successfully loaded HF token from .env file")
+                                return token
+        
+        # If not found in .env and token_file is provided, try that
+        if token_file and os.path.exists(token_file):
+            with open(token_file, 'r') as f:
+                token = f.read().strip()
 
-        with open(token_file, 'r') as f:
-            token = f.read().strip()
+            if token:
+                logger.info(f"Successfully loaded HF token from {token_file}")
+                return token
 
-        if not token:
-            logger.error(f"Huggingface token file is empty: {token_file}")
-            return None
+        # If still not found, check environment variable
+        env_token = os.environ.get('HF_TOKEN') or os.environ.get('HUGGING_FACE_HUB_TOKEN')
+        if env_token:
+            logger.info("Successfully loaded HF token from environment variable")
+            return env_token
 
-        return token
+        logger.error("Huggingface token not found in .env file, token file, or environment variables")
+        return None
     except Exception as e:
         logger.error(f"Error reading Huggingface token: {str(e)}")
         return None

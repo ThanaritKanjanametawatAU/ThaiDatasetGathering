@@ -17,10 +17,14 @@ class SNRMeasurement:
     def _init_vad(self):
         """Initialize Voice Activity Detection model."""
         try:
-            # Use pyannote VAD
+            # Get HuggingFace token
+            from utils.huggingface import read_hf_token
+            hf_token = read_hf_token()
+            
+            # Use pyannote VAD with authentication
             self.vad_model = VoiceActivityDetection(
                 segmentation="pyannote/segmentation-3.0",
-                use_auth_token=False
+                use_auth_token=hf_token
             )
             # Set hyperparameters
             self.vad_model.instantiate({
@@ -29,8 +33,9 @@ class SNRMeasurement:
                 "min_duration_on": 0.1,
                 "min_duration_off": 0.1
             })
-        except Exception:
+        except Exception as e:
             # Fallback to energy-based VAD if pyannote fails
+            print(f"Warning: Could not load PyAnnote VAD model: {e}")
             self.vad_model = None
     
     def measure_snr(self, audio, sample_rate):

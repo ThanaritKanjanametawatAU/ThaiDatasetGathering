@@ -1,0 +1,622 @@
+# Task 19: Advanced Edge Case Handling for 10M+ Dataset Variability
+
+## Objective
+Implement comprehensive edge case handling for processing 10M+ diverse audio samples, including corrupted audio recovery, multi-language detection, exotic format handling, and automated error categorization.
+
+## Detailed Steps
+
+### 1. Corrupted Audio Recovery System
+```python
+import soundfile as sf
+import librosa
+from pydub import AudioSegment
+import wave
+import struct
+
+class CorruptedAudioRecovery:
+    def __init__(self):
+        self.recovery_methods = [
+            self.fix_header_corruption,
+            self.recover_partial_audio,
+            self.repair_with_ffmpeg,
+            self.reconstruct_from_raw_data,
+            self.deep_learning_recovery
+        ]
+        
+    def attempt_recovery(self, audio_path: str) -> Optional[np.ndarray]:
+        """Try multiple recovery methods in order of complexity"""
+        for method in self.recovery_methods:
+            try:
+                logger.info(f"Attempting recovery with {method.__name__}")
+                recovered_audio = method(audio_path)
+                
+                if recovered_audio is not None and self.validate_recovered_audio(recovered_audio):
+                    logger.success(f"Successfully recovered audio using {method.__name__}")
+                    return recovered_audio
+                    
+            except Exception as e:
+                logger.warning(f"Recovery method {method.__name__} failed: {str(e)}")
+                continue
+                
+        return None
+    
+    def fix_header_corruption(self, audio_path: str) -> Optional[np.ndarray]:
+        """Fix common header corruptions in WAV files"""
+        try:
+            with open(audio_path, 'rb') as f:
+                data = f.read()
+            
+            # Check for common header issues
+            if not data.startswith(b'RIFF'):
+                # Try to find RIFF header in file
+                riff_pos = data.find(b'RIFF')
+                if riff_pos > 0 and riff_pos < 1000:  # Reasonable offset
+                    data = data[riff_pos:]
+                    
+            # Fix chunk size issues
+            if len(data) > 44:  # Minimum WAV header size
+                # Recalculate chunk sizes
+                file_size = len(data)
+                data = b'RIFF' + struct.pack('<I', file_size - 8) + data[8:]
+                
+                # Save temporary fixed file
+                temp_path = audio_path + '.fixed.wav'
+                with open(temp_path, 'wb') as f:
+                    f.write(data)
+                    
+                # Try to load fixed file
+                audio, sr = librosa.load(temp_path, sr=None)
+                os.remove(temp_path)
+                return audio
+                
+        except Exception as e:
+            logger.error(f"Header fix failed: {str(e)}")
+            return None
+    
+    def recover_partial_audio(self, audio_path: str) -> Optional[np.ndarray]:
+        """Recover as much audio as possible from partially corrupted file"""
+        try:
+            # Try to read file in chunks
+            chunk_size = 1024 * 1024  # 1MB chunks
+            audio_chunks = []
+            
+            with open(audio_path, 'rb') as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                        
+                    try:
+                        # Try to decode chunk as audio
+                        temp_file = io.BytesIO(chunk)
+                        audio_chunk, sr = sf.read(temp_file)
+                        audio_chunks.append(audio_chunk)
+                    except:
+                        # Skip corrupted chunks
+                        continue
+            
+            if audio_chunks:
+                return np.concatenate(audio_chunks)
+                
+        except Exception as e:
+            logger.error(f"Partial recovery failed: {str(e)}")
+            return None
+```
+
+### 2. Multi-Language Detection and Handling
+```python
+from langdetect import detect_langs
+import whisper
+from transformers import pipeline
+
+class MultiLanguageHandler:
+    def __init__(self):
+        self.whisper_model = whisper.load_model("large-v2")
+        self.language_classifier = pipeline(
+            "audio-classification", 
+            model="facebook/mms-lid-4017"
+        )
+        self.target_language = 'th'
+        
+    def detect_language(self, audio: np.ndarray, sr: int) -> Dict[str, float]:
+        """Detect languages present in audio with confidence scores"""
+        results = {}
+        
+        # Method 1: Whisper language detection
+        try:
+            whisper_result = self.whisper_model.detect_language(audio)
+            results['whisper'] = {
+                lang: prob for lang, prob in whisper_result[1].items()
+            }
+        except:
+            results['whisper'] = {}
+        
+        # Method 2: MMS language identification
+        try:
+            mms_result = self.language_classifier(audio)
+            results['mms'] = {
+                item['label']: item['score'] 
+                for item in mms_result[:5]  # Top 5 languages
+            }
+        except:
+            results['mms'] = {}
+        
+        # Combine results with weighted voting
+        combined = self._combine_language_scores(results)
+        return combined
+    
+    def handle_multilingual_audio(self, audio: np.ndarray, sr: int) -> Dict[str, Any]:
+        """Process audio with multiple languages"""
+        # Detect languages
+        languages = self.detect_language(audio, sr)
+        
+        # Check if target language is dominant
+        thai_score = languages.get('th', 0.0)
+        
+        if thai_score < 0.3:
+            # Not enough Thai content
+            return {
+                'action': 'exclude',
+                'reason': 'insufficient_thai_content',
+                'thai_score': thai_score,
+                'detected_languages': languages
+            }
+        elif thai_score < 0.7:
+            # Mixed language content - try to extract Thai segments
+            thai_segments = self.extract_language_segments(audio, sr, 'th')
+            
+            if thai_segments:
+                # Concatenate Thai segments
+                thai_audio = np.concatenate([seg['audio'] for seg in thai_segments])
+                
+                return {
+                    'action': 'process_segments',
+                    'audio': thai_audio,
+                    'original_duration': len(audio) / sr,
+                    'thai_duration': len(thai_audio) / sr,
+                    'segments': thai_segments
+                }
+            else:
+                return {
+                    'action': 'exclude',
+                    'reason': 'no_extractable_thai_segments'
+                }
+        else:
+            # Predominantly Thai
+            return {
+                'action': 'process',
+                'audio': audio,
+                'thai_score': thai_score
+            }
+    
+    def extract_language_segments(self, audio: np.ndarray, sr: int, 
+                                target_lang: str) -> List[Dict]:
+        """Extract segments of specific language from audio"""
+        # Use Whisper for transcription with timestamps
+        result = self.whisper_model.transcribe(
+            audio, 
+            task="transcribe", 
+            language=None,  # Auto-detect
+            return_timestamps=True
+        )
+        
+        segments = []
+        for segment in result['segments']:
+            # Check language of segment
+            segment_audio = audio[int(segment['start'] * sr):int(segment['end'] * sr)]
+            lang_scores = self.detect_language(segment_audio, sr)
+            
+            if lang_scores.get(target_lang, 0) > 0.7:
+                segments.append({
+                    'start': segment['start'],
+                    'end': segment['end'],
+                    'audio': segment_audio,
+                    'text': segment['text'],
+                    'language_score': lang_scores[target_lang]
+                })
+        
+        return segments
+```
+
+### 3. Exotic Audio Format Handler
+```python
+import subprocess
+import tempfile
+from typing import Tuple
+
+class ExoticFormatHandler:
+    def __init__(self):
+        self.supported_formats = {
+            # Format: (extension, decoder_function)
+            '.opus': self.decode_opus,
+            '.spx': self.decode_speex,
+            '.amr': self.decode_amr,
+            '.wma': self.decode_wma,
+            '.m4a': self.decode_m4a,
+            '.aac': self.decode_aac,
+            '.ape': self.decode_ape,
+            '.wv': self.decode_wavpack,
+            '.tta': self.decode_tta,
+            '.mpc': self.decode_musepack
+        }
+        
+    def can_handle(self, file_path: str) -> bool:
+        """Check if format can be handled"""
+        ext = os.path.splitext(file_path)[1].lower()
+        return ext in self.supported_formats
+    
+    def decode_audio(self, file_path: str) -> Tuple[np.ndarray, int]:
+        """Decode exotic audio format to numpy array"""
+        ext = os.path.splitext(file_path)[1].lower()
+        
+        if ext not in self.supported_formats:
+            # Try FFmpeg as fallback
+            return self.decode_with_ffmpeg(file_path)
+            
+        decoder = self.supported_formats[ext]
+        return decoder(file_path)
+    
+    def decode_with_ffmpeg(self, file_path: str) -> Tuple[np.ndarray, int]:
+        """Universal decoder using FFmpeg"""
+        try:
+            # Create temporary WAV file
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                tmp_path = tmp.name
+            
+            # Convert to WAV using FFmpeg
+            cmd = [
+                'ffmpeg', '-i', file_path,
+                '-ar', '16000',  # Sample rate
+                '-ac', '1',      # Mono
+                '-f', 'wav',
+                '-y',            # Overwrite
+                tmp_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")
+            
+            # Load converted audio
+            audio, sr = librosa.load(tmp_path, sr=None)
+            
+            # Cleanup
+            os.unlink(tmp_path)
+            
+            return audio, sr
+            
+        except Exception as e:
+            logger.error(f"FFmpeg decoding failed: {str(e)}")
+            raise
+    
+    def handle_variable_bitrate(self, file_path: str) -> Dict[str, Any]:
+        """Handle variable bitrate audio files"""
+        try:
+            # Get detailed audio info
+            cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json',
+                   '-show_format', '-show_streams', file_path]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            info = json.loads(result.stdout)
+            
+            # Extract bitrate information
+            format_info = info.get('format', {})
+            streams = info.get('streams', [])
+            
+            audio_stream = next((s for s in streams if s['codec_type'] == 'audio'), None)
+            
+            if audio_stream:
+                return {
+                    'format': format_info.get('format_name'),
+                    'duration': float(format_info.get('duration', 0)),
+                    'bitrate': int(format_info.get('bit_rate', 0)),
+                    'is_vbr': audio_stream.get('bit_rate', None) is None,
+                    'sample_rate': int(audio_stream.get('sample_rate', 0)),
+                    'channels': int(audio_stream.get('channels', 0)),
+                    'codec': audio_stream.get('codec_name')
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get audio info: {str(e)}")
+            return {}
+```
+
+### 4. Automated Error Categorization
+```python
+from enum import Enum
+import traceback
+import re
+
+class ErrorCategory(Enum):
+    CORRUPT_HEADER = "corrupt_header"
+    CORRUPT_DATA = "corrupt_data"
+    UNSUPPORTED_FORMAT = "unsupported_format"
+    ENCODING_ERROR = "encoding_error"
+    NETWORK_ERROR = "network_error"
+    PERMISSION_ERROR = "permission_error"
+    MEMORY_ERROR = "memory_error"
+    TIMEOUT_ERROR = "timeout_error"
+    LANGUAGE_ERROR = "language_error"
+    QUALITY_ERROR = "quality_error"
+    UNKNOWN_ERROR = "unknown_error"
+
+class ErrorCategorizer:
+    def __init__(self):
+        self.error_patterns = {
+            ErrorCategory.CORRUPT_HEADER: [
+                r".*header.*corrupt.*",
+                r".*invalid.*wav.*header.*",
+                r".*riff.*not found.*"
+            ],
+            ErrorCategory.CORRUPT_DATA: [
+                r".*corrupt.*data.*",
+                r".*invalid.*audio.*data.*",
+                r".*decode.*error.*"
+            ],
+            ErrorCategory.UNSUPPORTED_FORMAT: [
+                r".*unsupported.*format.*",
+                r".*unknown.*codec.*",
+                r".*no.*decoder.*found.*"
+            ],
+            ErrorCategory.ENCODING_ERROR: [
+                r".*unicode.*decode.*error.*",
+                r".*encoding.*error.*",
+                r".*codec.*can't.*decode.*"
+            ],
+            ErrorCategory.NETWORK_ERROR: [
+                r".*connection.*error.*",
+                r".*timeout.*",
+                r".*network.*unreachable.*"
+            ],
+            ErrorCategory.MEMORY_ERROR: [
+                r".*out.*of.*memory.*",
+                r".*memory.*error.*",
+                r".*allocation.*failed.*"
+            ]
+        }
+        
+        self.recovery_strategies = {
+            ErrorCategory.CORRUPT_HEADER: [
+                "try_header_recovery",
+                "use_ffmpeg_fallback",
+                "extract_raw_audio"
+            ],
+            ErrorCategory.CORRUPT_DATA: [
+                "partial_recovery",
+                "skip_corrupted_segments",
+                "use_error_concealment"
+            ],
+            ErrorCategory.UNSUPPORTED_FORMAT: [
+                "convert_with_ffmpeg",
+                "use_external_decoder",
+                "request_original_format"
+            ]
+        }
+    
+    def categorize_error(self, error: Exception, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Categorize error and suggest recovery strategies"""
+        error_str = str(error).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        # Try to match error patterns
+        category = ErrorCategory.UNKNOWN_ERROR
+        matched_pattern = None
+        
+        for cat, patterns in self.error_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, error_str) or re.search(pattern, traceback_str):
+                    category = cat
+                    matched_pattern = pattern
+                    break
+            if category != ErrorCategory.UNKNOWN_ERROR:
+                break
+        
+        # Get recovery strategies
+        strategies = self.recovery_strategies.get(category, [])
+        
+        # Build categorization result
+        result = {
+            'error_category': category.value,
+            'error_message': str(error),
+            'error_type': type(error).__name__,
+            'matched_pattern': matched_pattern,
+            'recovery_strategies': strategies,
+            'context': context,
+            'timestamp': datetime.now().isoformat(),
+            'can_retry': self._is_retriable(category),
+            'severity': self._get_severity(category)
+        }
+        
+        # Log to error database
+        self._log_to_database(result)
+        
+        return result
+```
+
+### 5. Intelligent Retry Mechanism
+```python
+class IntelligentRetryMechanism:
+    def __init__(self):
+        self.retry_policies = {}
+        self.retry_history = {}
+        
+    def execute_with_retry(self, 
+                          func: Callable,
+                          args: tuple,
+                          kwargs: dict,
+                          context: Dict[str, Any]) -> Any:
+        """Execute function with intelligent retry logic"""
+        max_retries = 3
+        retry_count = 0
+        last_error = None
+        
+        while retry_count < max_retries:
+            try:
+                # Execute function
+                result = func(*args, **kwargs)
+                
+                # Success - record for learning
+                self._record_success(func.__name__, context)
+                
+                return result
+                
+            except Exception as e:
+                retry_count += 1
+                last_error = e
+                
+                # Categorize error
+                error_info = ErrorCategorizer().categorize_error(e, context)
+                
+                # Check if should retry
+                if not error_info['can_retry']:
+                    logger.error(f"Non-retriable error: {error_info['error_category']}")
+                    raise
+                
+                # Apply recovery strategy before retry
+                recovery_applied = self._apply_recovery_strategy(
+                    error_info,
+                    func,
+                    args,
+                    kwargs
+                )
+                
+                if not recovery_applied and retry_count >= max_retries:
+                    raise
+                
+                # Calculate backoff
+                backoff = self._calculate_backoff(
+                    error_info['error_category'],
+                    retry_count
+                )
+                
+                logger.warning(f"Retry {retry_count}/{max_retries} after {backoff}s")
+                time.sleep(backoff)
+        
+        # All retries exhausted
+        raise last_error
+```
+
+### 6. Edge Case Detection Pipeline
+```python
+class EdgeCaseDetector:
+    def __init__(self):
+        self.edge_case_rules = {
+            'extremely_short': lambda a, sr: len(a) / sr < 0.1,
+            'extremely_long': lambda a, sr: len(a) / sr > 3600,
+            'silence_only': lambda a, sr: np.max(np.abs(a)) < 0.001,
+            'clipping': lambda a, sr: np.sum(np.abs(a) > 0.99) / len(a) > 0.01,
+            'dc_offset': lambda a, sr: abs(np.mean(a)) > 0.1,
+            'extreme_dynamic_range': lambda a, sr: np.std(a) < 0.001 or np.std(a) > 0.5,
+            'unusual_sample_rate': lambda a, sr: sr not in [8000, 16000, 22050, 44100, 48000],
+            'non_speech_content': lambda a, sr: self._detect_non_speech(a, sr),
+            'multiple_speakers': lambda a, sr: self._detect_multiple_speakers(a, sr) > 3,
+            'background_music': lambda a, sr: self._detect_music(a, sr),
+            'reverb_echo': lambda a, sr: self._detect_reverb(a, sr) > 0.7
+        }
+        
+    def detect_edge_cases(self, audio: np.ndarray, sr: int) -> List[str]:
+        """Detect all edge cases in audio"""
+        detected_cases = []
+        
+        for case_name, detector in self.edge_case_rules.items():
+            try:
+                if detector(audio, sr):
+                    detected_cases.append(case_name)
+            except Exception as e:
+                logger.warning(f"Edge case detection failed for {case_name}: {str(e)}")
+        
+        return detected_cases
+    
+    def handle_edge_case(self, audio: np.ndarray, sr: int, 
+                        edge_case: str) -> Tuple[np.ndarray, int]:
+        """Handle specific edge case"""
+        handlers = {
+            'extremely_short': self._handle_short_audio,
+            'extremely_long': self._handle_long_audio,
+            'silence_only': self._handle_silence,
+            'clipping': self._handle_clipping,
+            'dc_offset': self._handle_dc_offset,
+            'extreme_dynamic_range': self._handle_dynamic_range,
+            'unusual_sample_rate': self._handle_sample_rate,
+            'non_speech_content': self._handle_non_speech,
+            'multiple_speakers': self._handle_multiple_speakers,
+            'background_music': self._handle_background_music,
+            'reverb_echo': self._handle_reverb
+        }
+        
+        handler = handlers.get(edge_case)
+        if handler:
+            return handler(audio, sr)
+        else:
+            return audio, sr
+```
+
+### 7. Create Edge Case Dashboard
+```python
+class EdgeCaseDashboard:
+    def __init__(self):
+        self.edge_case_stats = {}
+        self.recovery_success_rates = {}
+        
+    def update_stats(self, dataset: str, edge_cases: List[str], 
+                    recovery_results: Dict[str, bool]):
+        """Update edge case statistics"""
+        if dataset not in self.edge_case_stats:
+            self.edge_case_stats[dataset] = {}
+            
+        for case in edge_cases:
+            if case not in self.edge_case_stats[dataset]:
+                self.edge_case_stats[dataset][case] = {
+                    'count': 0,
+                    'recovered': 0,
+                    'failed': 0
+                }
+            
+            self.edge_case_stats[dataset][case]['count'] += 1
+            
+            if case in recovery_results:
+                if recovery_results[case]:
+                    self.edge_case_stats[dataset][case]['recovered'] += 1
+                else:
+                    self.edge_case_stats[dataset][case]['failed'] += 1
+    
+    def generate_report(self) -> Dict[str, Any]:
+        """Generate comprehensive edge case report"""
+        report = {
+            'summary': {
+                'total_edge_cases': sum(
+                    sum(stats['count'] for stats in dataset_stats.values())
+                    for dataset_stats in self.edge_case_stats.values()
+                ),
+                'recovery_rate': self._calculate_overall_recovery_rate(),
+                'most_common_cases': self._get_most_common_cases(),
+                'datasets_affected': list(self.edge_case_stats.keys())
+            },
+            'by_dataset': self.edge_case_stats,
+            'recommendations': self._generate_recommendations()
+        }
+        
+        return report
+```
+
+## Acceptance Criteria
+- Corrupted audio recovery achieves >80% success rate
+- Multi-language detection correctly identifies Thai content
+- All exotic audio formats are handled gracefully
+- Error categorization covers 95% of encountered errors
+- Intelligent retry reduces manual intervention to zero
+- Edge case detection identifies all defined cases
+- Dashboard provides actionable insights
+
+## Dependencies
+- Task 1: Project Setup
+- Task 2: Dataset Processor Interface
+- Task 14: TOPSIS Quality Scoring
+- Audio processing libraries (FFmpeg, etc.)
+
+## Estimated Effort
+- 15-18 hours
+
+## Priority
+- HIGH - Critical for handling 10M+ diverse samples

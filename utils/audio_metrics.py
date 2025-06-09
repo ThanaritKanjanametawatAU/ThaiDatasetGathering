@@ -25,6 +25,29 @@ except ImportError:
     warnings.warn("STOI not available. Install with: pip install pystoi")
 
 
+def calculate_energy_db(signal: np.ndarray) -> float:
+    """
+    Calculate energy of a signal in decibels.
+    
+    Args:
+        signal: Audio signal
+        
+    Returns:
+        Energy in decibels (dB)
+    """
+    # Calculate RMS energy
+    rms = np.sqrt(np.mean(signal ** 2))
+    
+    # Avoid log of zero
+    if rms < 1e-10:
+        return -100.0  # Return very low dB for silence
+    
+    # Convert to dB (reference level 1.0)
+    energy_db = 20 * np.log10(rms)
+    
+    return float(energy_db)
+
+
 def calculate_si_sdr(reference: np.ndarray, estimation: np.ndarray) -> float:
     """
     Calculate Scale-Invariant Signal-to-Distortion Ratio (SI-SDR).

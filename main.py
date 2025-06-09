@@ -148,7 +148,7 @@ def parse_arguments() -> argparse.Namespace:
     enhancement_group.add_argument(
         '--enhancement-level',
         type=str,
-        choices=['mild', 'moderate', 'aggressive', 'ultra_aggressive'],
+        choices=['mild', 'moderate', 'aggressive', 'ultra_aggressive', 'selective_secondary_removal'],
         default='moderate',
         help='Enhancement level: mild, moderate, aggressive, or ultra_aggressive (default: moderate)'
     )
@@ -156,6 +156,16 @@ def parse_arguments() -> argparse.Namespace:
         '--enhancement-gpu',
         action='store_true',
         help='Use GPU for audio enhancement (if available)'
+    )
+    enhancement_group.add_argument(
+        '--enable-secondary-speaker-removal',
+        action='store_true',
+        help='Enable secondary speaker removal using SpeechBrain SepFormer'
+    )
+    enhancement_group.add_argument(
+        '--use-audio-separator',
+        action='store_true',
+        help='Use audio-separator method instead of SpeechBrain (experimental)'
     )
     
     # 35dB SNR Enhancement arguments
@@ -1081,7 +1091,15 @@ def main() -> int:
                 # STT configuration
                 "dataset_name": dataset_name,
                 "enable_stt": args.enable_stt if not args.no_stt else False,
-                "stt_batch_size": args.stt_batch_size
+                "stt_batch_size": args.stt_batch_size,
+                # Audio enhancement configuration
+                "enable_audio_enhancement": args.enable_audio_enhancement,
+                "enhancement_level": args.enhancement_level,
+                "enhancement_gpu": args.enhancement_gpu,
+                "enable_secondary_speaker_removal": args.enable_secondary_speaker_removal,
+                "use_audio_separator": args.use_audio_separator,
+                "enable_35db_enhancement": args.enable_35db_enhancement,
+                "target_snr": args.target_snr
             }
             processor = create_processor(dataset_name, processor_config)
 

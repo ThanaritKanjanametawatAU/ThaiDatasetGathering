@@ -43,10 +43,14 @@ class SpeakerIdentification:
         self.config = config
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Load embedding model
+        # Load embedding model with authentication
+        from utils.huggingface import read_hf_token
+        hf_token = read_hf_token()
+        
         logger.info(f"Loading embedding model: {config.get('model', 'pyannote/wespeaker-voxceleb-resnet34-LM')}")
         self.model = Model.from_pretrained(
-            config.get('model', 'pyannote/wespeaker-voxceleb-resnet34-LM')
+            config.get('model', 'pyannote/wespeaker-voxceleb-resnet34-LM'),
+            use_auth_token=hf_token
         ).to(self.device)
         
         # Clustering parameters from config - use tuned values for Thai Voice dataset

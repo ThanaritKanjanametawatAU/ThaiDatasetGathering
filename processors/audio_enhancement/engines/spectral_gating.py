@@ -115,6 +115,11 @@ class SpectralGatingEngine:
             Enhanced audio
         """
         try:
+            # Convert float16 to float32 for noisereduce compatibility
+            original_dtype = audio.dtype
+            if audio.dtype == np.float16:
+                audio = audio.astype(np.float32)
+                
             # Estimate noise from first 0.5 seconds
             noise_sample_length = int(0.5 * sample_rate)
             if len(audio) > noise_sample_length:
@@ -134,7 +139,8 @@ class SpectralGatingEngine:
                 prop_decrease=1.0
             )
             
-            return enhanced
+            # Convert back to original dtype
+            return enhanced.astype(original_dtype)
             
         except Exception as e:
             logger.error(f"noisereduce processing failed: {e}")
@@ -158,6 +164,11 @@ class SpectralGatingEngine:
         Returns:
             Enhanced audio
         """
+        # Convert float16 to float32 for scipy compatibility
+        original_dtype = audio.dtype
+        if audio.dtype == np.float16:
+            audio = audio.astype(np.float32)
+            
         # Parameters
         frame_len = 2048
         hop_len = frame_len // 4
@@ -218,4 +229,5 @@ class SpectralGatingEngine:
         elif len(enhanced) < len(audio):
             enhanced = np.pad(enhanced, (0, len(audio) - len(enhanced)))
             
-        return enhanced
+        # Convert back to original dtype
+        return enhanced.astype(original_dtype)

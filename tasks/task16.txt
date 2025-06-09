@@ -1,0 +1,296 @@
+# Task 16: GPU Memory Management and Optimization
+
+## Objective
+Implement sophisticated GPU memory management strategies to handle 10M+ audio samples efficiently, including dynamic batching, memory pooling, and automatic fallback mechanisms.
+
+## Detailed Steps
+
+### 1. GPU Memory Profiler and Monitor
+```python
+import torch
+import pynvml
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+@dataclass
+class GPUMemoryState:
+    total_memory: int
+    allocated_memory: int
+    reserved_memory: int
+    free_memory: int
+    utilization_percent: float
+
+class GPUMemoryManager:
+    def __init__(self):
+        pynvml.nvmlInit()
+        self.device_count = torch.cuda.device_count()
+        self.memory_pools = {}
+        self.allocation_history = []
+        
+    def get_memory_state(self, device_id: int = 0) -> GPUMemoryState:
+        """Get current GPU memory state"""
+        handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        
+        return GPUMemoryState(
+            total_memory=info.total,
+            allocated_memory=torch.cuda.memory_allocated(device_id),
+            reserved_memory=torch.cuda.memory_reserved(device_id),
+            free_memory=info.free,
+            utilization_percent=(info.used / info.total) * 100
+        )
+    
+    def estimate_batch_size(self, model_memory_mb: float, 
+                          sample_memory_mb: float,
+                          safety_factor: float = 0.8) -> int:
+        """Dynamically estimate optimal batch size"""
+        state = self.get_memory_state()
+        available_mb = (state.free_memory / 1024 / 1024) * safety_factor
+        
+        # Account for model memory and overhead
+        usable_memory = available_mb - model_memory_mb - 100  # 100MB overhead
+        
+        if usable_memory <= 0:
+            return 1
+            
+        return max(1, int(usable_memory / sample_memory_mb))
+```
+
+### 2. Implement Memory-Efficient Data Loading
+```python
+class MemoryEfficientDataLoader:
+    def __init__(self, dataset, memory_manager: GPUMemoryManager):
+        self.dataset = dataset
+        self.memory_manager = memory_manager
+        self.current_batch_size = None
+        
+    def adaptive_batch_iterator(self, initial_batch_size: int = 32):
+        """Iterator with dynamic batch size adjustment"""
+        batch_size = initial_batch_size
+        batch = []
+        
+        for idx, sample in enumerate(self.dataset):
+            # Check memory before adding to batch
+            if idx % 10 == 0:  # Check every 10 samples
+                state = self.memory_manager.get_memory_state()
+                
+                if state.utilization_percent > 85:
+                    # Reduce batch size
+                    batch_size = max(1, batch_size // 2)
+                    logger.warning(f"High GPU memory usage: {state.utilization_percent}%. "
+                                 f"Reducing batch size to {batch_size}")
+                elif state.utilization_percent < 50 and batch_size < initial_batch_size:
+                    # Increase batch size
+                    batch_size = min(initial_batch_size, batch_size * 2)
+                    logger.info(f"Low GPU memory usage: {state.utilization_percent}%. "
+                              f"Increasing batch size to {batch_size}")
+            
+            batch.append(sample)
+            
+            if len(batch) >= batch_size:
+                yield self._prepare_batch(batch)
+                batch = []
+                
+                # Force garbage collection after large batches
+                if batch_size > 64:
+                    torch.cuda.empty_cache()
+        
+        if batch:
+            yield self._prepare_batch(batch)
+```
+
+### 3. Implement Model Memory Optimization
+```python
+class ModelMemoryOptimizer:
+    def __init__(self):
+        self.gradient_checkpointing_enabled = False
+        self.mixed_precision_enabled = True
+        
+    def optimize_model(self, model, optimization_level='O1'):
+        """Apply memory optimization techniques to model"""
+        optimized_model = model
+        
+        # Enable gradient checkpointing for training
+        if hasattr(model, 'gradient_checkpointing_enable'):
+            model.gradient_checkpointing_enable()
+            self.gradient_checkpointing_enabled = True
+            
+        # Enable mixed precision
+        if self.mixed_precision_enabled:
+            from apex import amp
+            model = amp.initialize(model, opt_level=optimization_level)
+            
+        # Model pruning for inference
+        if not model.training:
+            optimized_model = self.prune_model(model)
+            
+        return optimized_model
+    
+    def prune_model(self, model, sparsity=0.1):
+        """Prune model weights to reduce memory usage"""
+        import torch.nn.utils.prune as prune
+        
+        for name, module in model.named_modules():
+            if isinstance(module, (torch.nn.Linear, torch.nn.Conv1d)):
+                prune.l1_unstructured(module, name='weight', amount=sparsity)
+                
+        return model
+```
+
+### 4. Create GPU-CPU Memory Swapping
+```python
+class MemorySwapper:
+    def __init__(self, swap_threshold_mb: int = 1000):
+        self.swap_threshold_mb = swap_threshold_mb
+        self.cpu_cache = {}
+        self.gpu_cache = {}
+        self.access_history = deque(maxlen=1000)
+        
+    def smart_load(self, key: str, data_loader_fn):
+        """Load data with automatic GPU/CPU swapping"""
+        # Check if in GPU cache
+        if key in self.gpu_cache:
+            self.access_history.append((key, 'gpu_hit'))
+            return self.gpu_cache[key]
+            
+        # Check if in CPU cache
+        if key in self.cpu_cache:
+            self.access_history.append((key, 'cpu_hit'))
+            # Move to GPU if space available
+            if self._can_fit_on_gpu(self.cpu_cache[key]):
+                self.gpu_cache[key] = self.cpu_cache[key].cuda()
+                del self.cpu_cache[key]
+                return self.gpu_cache[key]
+            return self.cpu_cache[key]
+            
+        # Load fresh data
+        data = data_loader_fn()
+        self._cache_data(key, data)
+        return data
+    
+    def _can_fit_on_gpu(self, tensor):
+        """Check if tensor can fit in GPU memory"""
+        tensor_size_mb = tensor.element_size() * tensor.nelement() / 1024 / 1024
+        state = GPUMemoryManager().get_memory_state()
+        free_mb = state.free_memory / 1024 / 1024
+        
+        return free_mb > tensor_size_mb + 100  # 100MB buffer
+```
+
+### 5. Implement Automatic OOM Recovery
+```python
+class OOMRecoveryHandler:
+    def __init__(self):
+        self.oom_count = 0
+        self.recovery_strategies = [
+            self.clear_cache,
+            self.reduce_batch_size,
+            self.offload_to_cpu,
+            self.checkpoint_and_restart
+        ]
+        
+    def handle_oom(self, func, *args, **kwargs):
+        """Execute function with OOM recovery"""
+        for strategy in self.recovery_strategies:
+            try:
+                return func(*args, **kwargs)
+            except torch.cuda.OutOfMemoryError as e:
+                self.oom_count += 1
+                logger.error(f"OOM error #{self.oom_count}: {str(e)}")
+                
+                # Try recovery strategy
+                success = strategy()
+                if not success:
+                    continue
+                    
+                # Retry with reduced resources
+                if 'batch_size' in kwargs:
+                    kwargs['batch_size'] = max(1, kwargs['batch_size'] // 2)
+                    
+        raise RuntimeError(f"Failed to recover from OOM after {len(self.recovery_strategies)} attempts")
+```
+
+### 6. Create Memory Usage Dashboard
+```python
+class MemoryUsageDashboard:
+    def __init__(self, update_interval=1.0):
+        self.update_interval = update_interval
+        self.memory_history = deque(maxlen=1000)
+        self.peak_memory_usage = 0
+        
+    def start_monitoring(self):
+        """Start real-time memory monitoring"""
+        import threading
+        
+        def monitor():
+            while True:
+                state = GPUMemoryManager().get_memory_state()
+                self.memory_history.append({
+                    'timestamp': datetime.now(),
+                    'allocated_mb': state.allocated_memory / 1024 / 1024,
+                    'reserved_mb': state.reserved_memory / 1024 / 1024,
+                    'utilization': state.utilization_percent
+                })
+                
+                self.peak_memory_usage = max(
+                    self.peak_memory_usage, 
+                    state.allocated_memory
+                )
+                
+                time.sleep(self.update_interval)
+        
+        thread = threading.Thread(target=monitor, daemon=True)
+        thread.start()
+```
+
+### 7. Implement Multi-GPU Strategy
+```python
+class MultiGPUStrategy:
+    def __init__(self):
+        self.num_gpus = torch.cuda.device_count()
+        self.device_loads = [0.0] * self.num_gpus
+        
+    def get_least_loaded_device(self):
+        """Get GPU with lowest memory usage"""
+        min_load = float('inf')
+        best_device = 0
+        
+        for device_id in range(self.num_gpus):
+            state = GPUMemoryManager().get_memory_state(device_id)
+            if state.utilization_percent < min_load:
+                min_load = state.utilization_percent
+                best_device = device_id
+                
+        return best_device
+    
+    def distribute_batch(self, batch, model):
+        """Distribute batch across multiple GPUs"""
+        if self.num_gpus == 1:
+            return batch
+            
+        # Use DataParallel or DistributedDataParallel
+        if not isinstance(model, torch.nn.DataParallel):
+            model = torch.nn.DataParallel(model)
+            
+        return model
+```
+
+## Acceptance Criteria
+- Dynamic batch size adjustment based on GPU memory
+- Automatic OOM recovery without data loss
+- Memory usage stays below 90% during processing
+- Multi-GPU support with load balancing
+- Real-time memory monitoring dashboard
+- 50% reduction in OOM errors compared to baseline
+- Graceful degradation to CPU when GPU unavailable
+
+## Dependencies
+- Task 1: Project Setup
+- Task 13: Silero VAD Integration
+- CUDA/GPU infrastructure
+
+## Estimated Effort
+- 15-18 hours
+
+## Priority
+- HIGH - Critical for handling 10M+ samples

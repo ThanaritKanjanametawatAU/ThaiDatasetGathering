@@ -65,6 +65,10 @@ class FullAudioSecondaryRemoval:
             'suppression_method': 'none'
         }
         
+        # Ensure float32 for compatibility
+        if audio.dtype == np.float16:
+            audio = audio.astype(np.float32)
+        
         # Detect secondary speakers
         segments = self.detector.detect_speaker_changes(audio, sample_rate)
         

@@ -1,0 +1,427 @@
+# Task 18: Model Registry and Versioning System
+
+## Objective
+Implement a comprehensive model registry and versioning system for managing multiple models (VAD, STT, enhancement, separation) with A/B testing capabilities and performance tracking.
+
+## Detailed Steps
+
+### 1. Design Model Registry Architecture
+```python
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Any
+import mlflow
+from datetime import datetime
+
+@dataclass
+class ModelMetadata:
+    model_id: str
+    model_name: str
+    version: str
+    model_type: str  # 'vad', 'stt', 'enhancement', 'separation'
+    framework: str  # 'pytorch', 'tensorflow', 'onnx'
+    metrics: Dict[str, float]
+    parameters: Dict[str, Any]
+    training_dataset: str
+    created_at: datetime
+    updated_at: datetime
+    status: str  # 'staging', 'production', 'archived'
+    tags: List[str]
+
+class ModelRegistry:
+    def __init__(self, backend='mlflow'):
+        self.backend = backend
+        if backend == 'mlflow':
+            mlflow.set_tracking_uri("http://mlflow-server:5000")
+        self.models = {}
+        self.active_models = {}
+        
+    def register_model(self, 
+                      model_path: str,
+                      metadata: ModelMetadata) -> str:
+        """Register a new model version"""
+        if self.backend == 'mlflow':
+            with mlflow.start_run():
+                # Log model
+                mlflow.pytorch.log_model(
+                    pytorch_model=model_path,
+                    artifact_path=f"{metadata.model_type}/{metadata.model_name}",
+                    registered_model_name=metadata.model_name
+                )
+                
+                # Log metadata
+                mlflow.log_params(metadata.parameters)
+                mlflow.log_metrics(metadata.metrics)
+                
+                # Set tags
+                for tag in metadata.tags:
+                    mlflow.set_tag(tag.split(':')[0], tag.split(':')[1])
+                
+                # Get model version
+                client = mlflow.tracking.MlflowClient()
+                model_version = client.create_model_version(
+                    name=metadata.model_name,
+                    source=mlflow.get_artifact_uri(
+                        f"{metadata.model_type}/{metadata.model_name}"
+                    ),
+                    run_id=mlflow.active_run().info.run_id
+                )
+                
+                return model_version.version
+```
+
+### 2. Implement Model Versioning
+```python
+class ModelVersionManager:
+    def __init__(self, registry: ModelRegistry):
+        self.registry = registry
+        self.version_history = {}
+        
+    def create_version(self, 
+                      base_model_id: str,
+                      changes: Dict[str, Any]) -> str:
+        """Create new model version with tracked changes"""
+        # Get base model
+        base_model = self.registry.get_model(base_model_id)
+        
+        # Generate new version
+        new_version = self._increment_version(base_model.version)
+        
+        # Track changes
+        version_info = {
+            'base_version': base_model.version,
+            'new_version': new_version,
+            'changes': changes,
+            'timestamp': datetime.now(),
+            'change_type': self._classify_change(changes)
+        }
+        
+        # Store version history
+        if base_model_id not in self.version_history:
+            self.version_history[base_model_id] = []
+        self.version_history[base_model_id].append(version_info)
+        
+        return new_version
+    
+    def _increment_version(self, version: str) -> str:
+        """Semantic versioning: major.minor.patch"""
+        parts = version.split('.')
+        if len(parts) != 3:
+            return "1.0.0"
+            
+        major, minor, patch = map(int, parts)
+        
+        # Determine version increment based on changes
+        if self._is_major_change():
+            return f"{major + 1}.0.0"
+        elif self._is_minor_change():
+            return f"{major}.{minor + 1}.0"
+        else:
+            return f"{major}.{minor}.{patch + 1}"
+```
+
+### 3. Create A/B Testing Framework
+```python
+class ABTestingFramework:
+    def __init__(self, registry: ModelRegistry):
+        self.registry = registry
+        self.active_tests = {}
+        self.test_results = {}
+        
+    def create_ab_test(self,
+                      test_name: str,
+                      model_a_id: str,
+                      model_b_id: str,
+                      traffic_split: float = 0.5,
+                      success_metrics: List[str] = None) -> str:
+        """Create A/B test between two model versions"""
+        test_id = f"test_{test_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        self.active_tests[test_id] = {
+            'test_name': test_name,
+            'model_a': model_a_id,
+            'model_b': model_b_id,
+            'traffic_split': traffic_split,
+            'success_metrics': success_metrics or ['accuracy', 'latency'],
+            'start_time': datetime.now(),
+            'status': 'active',
+            'results': {
+                'model_a': {'count': 0, 'metrics': {}},
+                'model_b': {'count': 0, 'metrics': {}}
+            }
+        }
+        
+        return test_id
+    
+    def route_request(self, test_id: str) -> str:
+        """Route request to appropriate model based on traffic split"""
+        import random
+        
+        test = self.active_tests.get(test_id)
+        if not test or test['status'] != 'active':
+            raise ValueError(f"No active test found: {test_id}")
+        
+        # Route based on traffic split
+        if random.random() < test['traffic_split']:
+            return test['model_a']
+        else:
+            return test['model_b']
+    
+    def record_result(self, 
+                     test_id: str, 
+                     model_id: str,
+                     metrics: Dict[str, float]):
+        """Record test results for analysis"""
+        test = self.active_tests.get(test_id)
+        if not test:
+            return
+            
+        # Determine which model
+        model_key = 'model_a' if model_id == test['model_a'] else 'model_b'
+        
+        # Update results
+        test['results'][model_key]['count'] += 1
+        for metric, value in metrics.items():
+            if metric not in test['results'][model_key]['metrics']:
+                test['results'][model_key]['metrics'][metric] = []
+            test['results'][model_key]['metrics'][metric].append(value)
+```
+
+### 4. Implement Model Performance Tracking
+```python
+class ModelPerformanceTracker:
+    def __init__(self):
+        self.performance_history = {}
+        self.alert_thresholds = {}
+        
+    def track_inference(self,
+                       model_id: str,
+                       input_data: Any,
+                       output_data: Any,
+                       latency_ms: float,
+                       metadata: Dict[str, Any] = None):
+        """Track model inference performance"""
+        if model_id not in self.performance_history:
+            self.performance_history[model_id] = []
+            
+        record = {
+            'timestamp': datetime.now(),
+            'latency_ms': latency_ms,
+            'input_size': self._calculate_size(input_data),
+            'output_size': self._calculate_size(output_data),
+            'metadata': metadata or {},
+            'success': True
+        }
+        
+        self.performance_history[model_id].append(record)
+        
+        # Check for performance degradation
+        self._check_performance_alerts(model_id)
+    
+    def calculate_metrics(self, model_id: str, window_minutes: int = 60):
+        """Calculate performance metrics over time window"""
+        if model_id not in self.performance_history:
+            return {}
+            
+        # Filter recent records
+        cutoff_time = datetime.now() - timedelta(minutes=window_minutes)
+        recent_records = [
+            r for r in self.performance_history[model_id]
+            if r['timestamp'] > cutoff_time
+        ]
+        
+        if not recent_records:
+            return {}
+            
+        # Calculate metrics
+        latencies = [r['latency_ms'] for r in recent_records]
+        
+        return {
+            'avg_latency_ms': np.mean(latencies),
+            'p50_latency_ms': np.percentile(latencies, 50),
+            'p95_latency_ms': np.percentile(latencies, 95),
+            'p99_latency_ms': np.percentile(latencies, 99),
+            'throughput_per_minute': len(recent_records) / window_minutes,
+            'success_rate': sum(1 for r in recent_records if r['success']) / len(recent_records)
+        }
+```
+
+### 5. Create Model Deployment Manager
+```python
+class ModelDeploymentManager:
+    def __init__(self, registry: ModelRegistry):
+        self.registry = registry
+        self.deployments = {}
+        
+    def deploy_model(self,
+                    model_id: str,
+                    deployment_config: Dict[str, Any]) -> str:
+        """Deploy model to production"""
+        deployment_id = f"deploy_{model_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Validate model
+        model = self.registry.get_model(model_id)
+        if model.status != 'production':
+            raise ValueError(f"Model {model_id} is not approved for production")
+        
+        # Create deployment
+        deployment = {
+            'deployment_id': deployment_id,
+            'model_id': model_id,
+            'config': deployment_config,
+            'status': 'deploying',
+            'created_at': datetime.now(),
+            'endpoints': []
+        }
+        
+        # Deploy based on config
+        if deployment_config.get('deployment_type') == 'kubernetes':
+            endpoints = self._deploy_to_kubernetes(model_id, deployment_config)
+        elif deployment_config.get('deployment_type') == 'sagemaker':
+            endpoints = self._deploy_to_sagemaker(model_id, deployment_config)
+        else:
+            endpoints = self._deploy_local(model_id, deployment_config)
+            
+        deployment['endpoints'] = endpoints
+        deployment['status'] = 'active'
+        
+        self.deployments[deployment_id] = deployment
+        return deployment_id
+    
+    def rollback_deployment(self, deployment_id: str, reason: str):
+        """Rollback a deployment"""
+        deployment = self.deployments.get(deployment_id)
+        if not deployment:
+            raise ValueError(f"Deployment {deployment_id} not found")
+            
+        # Log rollback
+        logger.warning(f"Rolling back deployment {deployment_id}: {reason}")
+        
+        # Get previous stable version
+        previous_version = self._get_previous_stable_version(
+            deployment['model_id']
+        )
+        
+        if previous_version:
+            # Deploy previous version
+            return self.deploy_model(
+                previous_version,
+                deployment['config']
+            )
+```
+
+### 6. Implement Model Comparison Tools
+```python
+class ModelComparisonTool:
+    def __init__(self, registry: ModelRegistry):
+        self.registry = registry
+        
+    def compare_models(self,
+                      model_ids: List[str],
+                      test_dataset: Any,
+                      metrics_to_compare: List[str] = None) -> Dict:
+        """Compare multiple models on same dataset"""
+        results = {}
+        
+        for model_id in model_ids:
+            model = self.registry.load_model(model_id)
+            
+            # Run inference
+            predictions = []
+            latencies = []
+            
+            for sample in test_dataset:
+                start_time = time.time()
+                pred = model.predict(sample)
+                latency = (time.time() - start_time) * 1000
+                
+                predictions.append(pred)
+                latencies.append(latency)
+            
+            # Calculate metrics
+            metrics = self._calculate_metrics(
+                predictions, 
+                test_dataset.labels,
+                latencies
+            )
+            
+            results[model_id] = {
+                'model_info': self.registry.get_model(model_id),
+                'metrics': metrics,
+                'latency_stats': {
+                    'mean': np.mean(latencies),
+                    'std': np.std(latencies),
+                    'p95': np.percentile(latencies, 95)
+                }
+            }
+        
+        return self._generate_comparison_report(results)
+```
+
+### 7. Create Model Lifecycle Management
+```python
+class ModelLifecycleManager:
+    def __init__(self, registry: ModelRegistry):
+        self.registry = registry
+        self.lifecycle_rules = {}
+        
+    def define_lifecycle_rule(self,
+                            rule_name: str,
+                            conditions: Dict[str, Any],
+                            actions: List[str]):
+        """Define automated lifecycle management rules"""
+        self.lifecycle_rules[rule_name] = {
+            'conditions': conditions,
+            'actions': actions,
+            'created_at': datetime.now()
+        }
+    
+    def evaluate_lifecycle_rules(self):
+        """Evaluate and execute lifecycle rules"""
+        for rule_name, rule in self.lifecycle_rules.items():
+            models = self.registry.list_models()
+            
+            for model in models:
+                if self._check_conditions(model, rule['conditions']):
+                    self._execute_actions(model, rule['actions'])
+    
+    def _check_conditions(self, model: ModelMetadata, conditions: Dict) -> bool:
+        """Check if model meets rule conditions"""
+        # Age-based conditions
+        if 'max_age_days' in conditions:
+            age = (datetime.now() - model.created_at).days
+            if age > conditions['max_age_days']:
+                return True
+                
+        # Performance-based conditions
+        if 'min_accuracy' in conditions:
+            if model.metrics.get('accuracy', 1.0) < conditions['min_accuracy']:
+                return True
+                
+        # Usage-based conditions
+        if 'min_usage_per_day' in conditions:
+            usage = self._get_model_usage(model.model_id)
+            if usage < conditions['min_usage_per_day']:
+                return True
+                
+        return False
+```
+
+## Acceptance Criteria
+- Model registry tracks all model versions with metadata
+- A/B testing framework enables automated model comparison
+- Performance tracking identifies degradation automatically
+- Deployment manager handles production rollouts/rollbacks
+- Model comparison tools provide comprehensive reports
+- Lifecycle management automates model retirement
+- Integration with existing ML pipeline
+
+## Dependencies
+- Task 1: Project Setup
+- Task 15: Monitoring Infrastructure
+- MLflow or similar model registry backend
+
+## Estimated Effort
+- 12-15 hours
+
+## Priority
+- MEDIUM - Important for continuous improvement and scale

@@ -310,6 +310,9 @@ class SimpleSecondaryRemoval:
             energy.append(frame_energy)
             
         energy = np.array(energy)
+        # Ensure float32 for scipy compatibility
+        if energy.dtype == np.float16:
+            energy = energy.astype(np.float32)
         smoothed_energy = gaussian_filter1d(energy, sigma=5)
         
         # Find significant changes

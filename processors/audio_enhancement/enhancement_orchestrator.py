@@ -10,6 +10,7 @@ from processors.audio_enhancement.adaptive_spectral import AdaptiveSpectralSubtr
 from processors.audio_enhancement.wiener_filter import AdaptiveWienerFilter
 from processors.audio_enhancement.harmonic_enhancer import HarmonicEnhancer
 from processors.audio_enhancement.perceptual_post import PerceptualPostProcessor
+from processors.audio_enhancement.robust_secondary_removal import RobustSecondaryRemoval
 from .quality_monitor import QualityMonitor
 
 
@@ -49,6 +50,11 @@ class EnhancementOrchestrator:
         Returns:
             Tuple of (enhanced_audio, metrics_dict)
         """
+        # Convert float16 to float32 if needed
+        original_dtype = audio.dtype
+        if audio.dtype == np.float16:
+            audio = audio.astype(np.float32)
+        
         # Step 1: Initial assessment
         current_snr = self.snr_calc.measure_snr(audio, sample_rate)
         
@@ -64,6 +70,13 @@ class EnhancementOrchestrator:
         # Check if already meets target
         if current_snr >= self.target_snr:
             logger.info(f"Audio already meets target SNR: {current_snr:.1f} dB")
+            metrics.update({
+                "snr_improvement": 0,  # No improvement needed
+                "target_achieved": True,
+                "pesq": None,  # Not calculated for already-good audio
+                "stoi": None,
+                "mos": None
+            })
             return audio, metrics
         
         # Keep original for quality comparison
@@ -143,6 +156,10 @@ class EnhancementOrchestrator:
         })
         
         logger.info(f"Enhancement complete: {metrics['initial_snr']:.1f} -> {final_snr:.1f} dB")
+        
+        # Preserve original dtype
+        if enhanced_audio.dtype != original_dtype:
+            enhanced_audio = enhanced_audio.astype(original_dtype)
         
         return enhanced_audio, metrics
     
