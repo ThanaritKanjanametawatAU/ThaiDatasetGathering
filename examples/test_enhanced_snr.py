@@ -1,206 +1,240 @@
-"""
-Example usage of the Enhanced SNR Calculator Module.
-Demonstrates various SNR calculation methods and configuration options.
+#!/usr/bin/env python3
+"""Example usage of the Enhanced SNR Calculator module (S01_T03).
+
+This example demonstrates how to use the Enhanced SNR Calculator for:
+1. Basic SNR calculation
+2. Detailed analysis with VAD segments
+3. Different VAD backends
+4. Batch processing
 """
 
 import numpy as np
-from utils.enhanced_snr_calculator import EnhancedSNRCalculator, SNRConfig
+import matplotlib.pyplot as plt
+from utils.enhanced_snr_calculator import EnhancedSNRCalculator, calculate_snr
 
-def test_basic_usage():
-    """Basic SNR calculation example."""
-    print("=== Basic SNR Calculation ===")
+
+def example_basic_usage():
+    """Example 1: Basic SNR calculation."""
+    print("=" * 60)
+    print("Example 1: Basic SNR Calculation")
+    print("=" * 60)
     
-    # Create a test signal
-    fs = 16000
-    duration = 2.0
-    t = np.linspace(0, duration, int(fs * duration))
+    # Generate a simple test signal
+    sample_rate = 16000
+    duration = 3.0
+    t = np.linspace(0, duration, int(duration * sample_rate))
     
-    # Speech-like signal with modulation
-    speech = 0.5 * np.sin(2 * np.pi * 300 * t) * (1 + 0.3 * np.sin(2 * np.pi * 3 * t))
+    # Signal: 440 Hz tone
+    signal = 0.5 * np.sin(2 * np.pi * 440 * t)
     
     # Add noise
-    noise = 0.05 * np.random.normal(0, 1, len(speech))
-    noisy_signal = speech + noise
+    noise = 0.1 * np.random.randn(len(signal))
+    mixed = signal + noise
+    
+    # Calculate SNR using convenience function
+    snr_db = calculate_snr(mixed, sample_rate)
+    print(f"SNR: {snr_db:.2f} dB")
+    
+    print()
+
+
+def example_detailed_analysis():
+    """Example 2: Detailed SNR analysis with VAD segments."""
+    print("=" * 60)
+    print("Example 2: Detailed Analysis with VAD")
+    print("=" * 60)
+    
+    # Create calculator instance
+    calculator = EnhancedSNRCalculator(vad_backend='energy')
+    
+    # Generate test signal with speech and silence
+    sample_rate = 16000
+    duration = 4.0
+    samples = int(duration * sample_rate)
+    
+    # Create signal with silence-speech-silence pattern
+    audio = np.zeros(samples)
+    
+    # Add speech in the middle 2 seconds
+    speech_start = int(1.0 * sample_rate)
+    speech_end = int(3.0 * sample_rate)
+    t_speech = np.linspace(0, 2.0, speech_end - speech_start)
+    
+    # Modulated tone to simulate speech
+    speech = np.sin(2 * np.pi * 200 * t_speech) * (1 + 0.3 * np.sin(2 * np.pi * 3 * t_speech))
+    audio[speech_start:speech_end] = speech
+    
+    # Add background noise
+    noise = 0.05 * np.random.randn(samples)
+    audio += noise
+    
+    # Calculate SNR with detailed results
+    result = calculator.calculate_snr(audio, sample_rate)
+    
+    print(f"SNR: {result['snr_db']:.2f} dB")
+    print(f"Signal Power: {result['signal_power']:.6f}")
+    print(f"Noise Power: {result['noise_power']:.6f}")
+    print(f"Confidence: {result['confidence']:.2f}")
+    print(f"\nVAD Segments:")
+    for i, (start, end) in enumerate(result['vad_segments']):
+        print(f"  Segment {i+1}: {start:.2f}s - {end:.2f}s (duration: {end-start:.2f}s)")
+    
+    print()
+
+
+def example_vad_backends():
+    """Example 3: Compare different VAD backends."""
+    print("=" * 60)
+    print("Example 3: Different VAD Backends")
+    print("=" * 60)
+    
+    # Generate test audio
+    sample_rate = 16000
+    duration = 2.0
+    t = np.linspace(0, duration, int(duration * sample_rate))
+    
+    # Complex signal
+    signal = np.sin(2 * np.pi * 300 * t) * (1 + 0.5 * np.sin(2 * np.pi * 2 * t))
+    noise = 0.1 * np.random.randn(len(signal))
+    audio = signal + noise
+    
+    # Test different backends
+    backends = ['energy', 'silero', 'pyannote']
+    
+    for backend in backends:
+        try:
+            calculator = EnhancedSNRCalculator(vad_backend=backend)
+            result = calculator.calculate_snr(audio, sample_rate)
+            print(f"{backend:8s} backend: SNR = {result['snr_db']:6.2f} dB, "
+                  f"Segments = {len(result['vad_segments'])}, "
+                  f"Confidence = {result['confidence']:.2f}")
+        except Exception as e:
+            print(f"{backend:8s} backend: Not available ({str(e)[:50]}...)")
+    
+    print()
+
+
+def example_batch_processing():
+    """Example 4: Batch processing of multiple audio files."""
+    print("=" * 60)
+    print("Example 4: Batch Processing")
+    print("=" * 60)
+    
+    # Create calculator once for efficiency
+    calculator = EnhancedSNRCalculator()
+    
+    # Simulate multiple audio files with different characteristics
+    test_cases = [
+        {"name": "Clean speech", "snr_target": 40},
+        {"name": "Moderate noise", "snr_target": 20},
+        {"name": "Heavy noise", "snr_target": 5},
+        {"name": "Very noisy", "snr_target": -5},
+    ]
+    
+    sample_rate = 16000
+    duration = 1.0
+    
+    results = []
+    for case in test_cases:
+        # Generate synthetic audio with target SNR
+        t = np.linspace(0, duration, int(duration * sample_rate))
+        signal = np.sin(2 * np.pi * 440 * t)
+        
+        # Calculate noise level for target SNR
+        signal_power = np.mean(signal ** 2)
+        target_snr_linear = 10 ** (case["snr_target"] / 10)
+        noise_power = signal_power / target_snr_linear
+        noise = np.sqrt(noise_power) * np.random.randn(len(signal))
+        
+        audio = signal + noise
+        
+        # Calculate SNR
+        result = calculator.calculate_snr(audio, sample_rate)
+        results.append({
+            "name": case["name"],
+            "target_snr": case["snr_target"],
+            "measured_snr": result["snr_db"],
+            "confidence": result["confidence"]
+        })
+    
+    # Display results
+    print(f"{'Audio Type':<20} {'Target SNR':>10} {'Measured SNR':>12} {'Confidence':>10}")
+    print("-" * 55)
+    for r in results:
+        print(f"{r['name']:<20} {r['target_snr']:>10.1f} {r['measured_snr']:>12.2f} {r['confidence']:>10.2f}")
+    
+    print()
+
+
+def example_real_world_audio():
+    """Example 5: Real-world audio simulation."""
+    print("=" * 60)
+    print("Example 5: Real-World Audio Simulation")
+    print("=" * 60)
+    
+    calculator = EnhancedSNRCalculator()
+    sample_rate = 16000
+    duration = 5.0
+    
+    # Simulate real-world audio with multiple speakers and background noise
+    t = np.linspace(0, duration, int(duration * sample_rate))
+    
+    # Primary speaker (intermittent)
+    audio = np.zeros_like(t)
+    
+    # Add speech segments
+    speech_segments = [
+        (0.5, 1.5, 300),   # First utterance
+        (2.0, 3.0, 350),   # Second utterance
+        (3.5, 4.5, 280),   # Third utterance
+    ]
+    
+    for start, end, freq in speech_segments:
+        mask = (t >= start) & (t <= end)
+        t_segment = t[mask] - start
+        # Modulated tone to simulate speech
+        speech = np.sin(2 * np.pi * freq * t_segment) * (1 + 0.3 * np.sin(2 * np.pi * 4 * t_segment))
+        # Add envelope
+        envelope = np.sin(np.pi * t_segment / (end - start))
+        audio[mask] += speech * envelope
+    
+    # Add background noise (traffic, air conditioning, etc.)
+    # Low-frequency rumble
+    rumble = 0.05 * np.sin(2 * np.pi * 50 * t + np.random.rand() * 2 * np.pi)
+    # Mid-frequency noise
+    background = 0.03 * np.random.randn(len(t))
+    # High-frequency hiss
+    hiss = 0.02 * np.random.randn(len(t))
+    hiss = np.convolve(hiss, np.ones(10)/10, mode='same')  # Smooth it
+    
+    # Combine
+    audio += rumble + background + hiss
     
     # Calculate SNR
-    calculator = EnhancedSNRCalculator()
-    snr = calculator.calculate_snr(noisy_signal, fs)
-    print(f"Automatic method SNR: {snr:.2f} dB")
+    result = calculator.calculate_snr(audio, sample_rate)
     
-    # Try different methods
-    methods = ['waveform', 'spectral', 'segmental', 'vad_enhanced']
-    for method in methods:
-        snr = calculator.calculate_snr(noisy_signal, fs, method=method)
-        print(f"{method.capitalize()} SNR: {snr:.2f} dB")
-
-
-def test_multiband_snr():
-    """Multiband SNR analysis example."""
-    print("\n=== Multiband SNR Analysis ===")
+    print(f"Real-world audio analysis:")
+    print(f"  SNR: {result['snr_db']:.2f} dB")
+    print(f"  Speech segments detected: {len(result['vad_segments'])}")
+    print(f"  Confidence: {result['confidence']:.2f}")
     
-    fs = 16000
-    duration = 1.0
-    t = np.linspace(0, duration, int(fs * duration))
+    # Calculate speech percentage
+    if result['vad_segments']:
+        speech_duration = sum(end - start for start, end in result['vad_segments'])
+        speech_percentage = (speech_duration / duration) * 100
+        print(f"  Speech percentage: {speech_percentage:.1f}%")
     
-    # Create signal with multiple frequency components
-    low_freq = 0.3 * np.sin(2 * np.pi * 200 * t)
-    mid_freq = 0.3 * np.sin(2 * np.pi * 1000 * t)
-    high_freq = 0.3 * np.sin(2 * np.pi * 4000 * t)
-    signal = low_freq + mid_freq + high_freq
-    
-    # Add frequency-dependent noise
-    noise = np.random.normal(0, 0.03, len(signal))
-    # Emphasize high frequency noise
-    b, a = np.array([1, -0.95]), np.array([1])  # High-pass filter
-    filtered_noise = np.convolve(noise, b, mode='same')
-    
-    noisy_signal = signal + filtered_noise
-    
-    calculator = EnhancedSNRCalculator()
-    bands = [(0, 500), (500, 2000), (2000, 8000)]
-    multiband_snr = calculator.calculate_multiband_snr(noisy_signal, fs, bands)
-    
-    for i, (low, high) in enumerate(bands):
-        print(f"Band {low}-{high} Hz: {multiband_snr[i]:.2f} dB")
-
-
-def test_confidence_scoring():
-    """SNR calculation with confidence scores."""
-    print("\n=== SNR with Confidence Scoring ===")
-    
-    fs = 16000
-    calculator = EnhancedSNRCalculator()
-    
-    # Test 1: Long, stationary signal (high confidence)
-    duration = 5.0
-    t = np.linspace(0, duration, int(fs * duration))
-    clean = 0.5 * np.sin(2 * np.pi * 300 * t)
-    noise = 0.05 * np.random.normal(0, 1, len(clean))
-    signal1 = clean + noise
-    
-    snr1, conf1 = calculator.calculate_snr_with_confidence(signal1, fs)
-    print(f"Long stationary signal: SNR={snr1:.2f} dB, Confidence={conf1:.2f}")
-    
-    # Test 2: Short, non-stationary signal (lower confidence)
-    duration = 0.5
-    t = np.linspace(0, duration, int(fs * duration))
-    varying = 0.5 * np.sin(2 * np.pi * 300 * t) * np.sin(2 * np.pi * 2 * t)
-    varying_noise = 0.05 * np.random.normal(0, 1, len(varying)) * (1 + 0.5 * np.sin(2 * np.pi * 1 * t))
-    signal2 = varying + varying_noise
-    
-    snr2, conf2 = calculator.calculate_snr_with_confidence(signal2, fs)
-    print(f"Short varying signal: SNR={snr2:.2f} dB, Confidence={conf2:.2f}")
-
-
-def test_custom_configuration():
-    """Using custom configuration."""
-    print("\n=== Custom Configuration ===")
-    
-    # Create custom config
-    config = SNRConfig(
-        frame_size=0.030,  # 30ms frames
-        frame_shift=0.015,  # 15ms shift
-        noise_estimation_method="minimum_statistics",
-        noise_bias_compensation=1.2,  # Less aggressive
-        vad_enabled=True,
-        vad_backend="energy",
-        vad_energy_threshold=-35,  # More sensitive
-        min_duration=0.3  # Shorter minimum
-    )
-    
-    calculator = EnhancedSNRCalculator(config)
-    
-    # Test with speech signal
-    fs = 16000
-    duration = 1.0
-    t = np.linspace(0, duration, int(fs * duration))
-    
-    # Create speech with pauses
-    speech = np.zeros(len(t))
-    speech[int(0.2*fs):int(0.5*fs)] = 0.5 * np.sin(2 * np.pi * 300 * t[int(0.2*fs):int(0.5*fs)])
-    speech[int(0.6*fs):int(0.9*fs)] = 0.5 * np.sin(2 * np.pi * 400 * t[int(0.6*fs):int(0.9*fs)])
-    
-    noise = 0.03 * np.random.normal(0, 1, len(speech))
-    noisy_signal = speech + noise
-    
-    snr = calculator.calculate_snr(noisy_signal, fs)
-    print(f"Custom config SNR: {snr:.2f} dB")
-
-
-def test_real_world_scenarios():
-    """Test with more realistic audio scenarios."""
-    print("\n=== Real-World Scenarios ===")
-    
-    fs = 16000
-    calculator = EnhancedSNRCalculator()
-    
-    # Scenario 1: Clean recording with room noise
-    duration = 2.0
-    t = np.linspace(0, duration, int(fs * duration))
-    speech = 0.7 * np.sin(2 * np.pi * 250 * t) * (1 + 0.2 * np.sin(2 * np.pi * 4 * t))
-    room_noise = 0.02 * np.random.normal(0, 1, len(speech))
-    signal = speech + room_noise
-    
-    snr = calculator.calculate_snr(signal, fs)
-    print(f"Clean recording with room noise: {snr:.2f} dB")
-    
-    # Scenario 2: Noisy environment
-    street_noise = 0.1 * np.random.normal(0, 1, len(speech))
-    # Add some low-frequency rumble
-    rumble = 0.05 * np.sin(2 * np.pi * 50 * t)
-    signal = speech + street_noise + rumble
-    
-    snr = calculator.calculate_snr(signal, fs)
-    print(f"Noisy street recording: {snr:.2f} dB")
-    
-    # Scenario 3: Phone quality
-    # Bandlimit the signal
-    from scipy import signal as scipy_signal
-    b, a = scipy_signal.butter(4, [300, 3400], fs=fs, btype='band')
-    phone_speech = scipy_signal.filtfilt(b, a, speech)
-    phone_noise = 0.04 * np.random.normal(0, 1, len(phone_speech))
-    signal = phone_speech + phone_noise
-    
-    snr = calculator.calculate_snr(signal, fs)
-    print(f"Phone quality audio: {snr:.2f} dB")
-
-
-def test_spectral_weighting():
-    """Test A-weighting for perceptual SNR."""
-    print("\n=== Perceptual SNR with A-weighting ===")
-    
-    fs = 16000
-    duration = 1.0
-    calculator = EnhancedSNRCalculator()
-    
-    # Test at different frequencies
-    frequencies = [100, 500, 1000, 4000]
-    
-    for freq in frequencies:
-        t = np.linspace(0, duration, int(fs * duration))
-        signal = 0.5 * np.sin(2 * np.pi * freq * t)
-        noise = 0.05 * np.random.normal(0, 1, len(signal))
-        noisy = signal + noise
-        
-        # Unweighted
-        snr_unweighted = calculator.calculate_snr(noisy, fs, method='spectral', weighting=None)
-        
-        # A-weighted
-        snr_weighted = calculator.calculate_snr(noisy, fs, method='spectral', weighting='A')
-        
-        print(f"{freq} Hz: Unweighted={snr_unweighted:.2f} dB, A-weighted={snr_weighted:.2f} dB")
+    print()
 
 
 if __name__ == "__main__":
-    # Run all examples
-    test_basic_usage()
-    test_multiband_snr()
-    test_confidence_scoring()
-    test_custom_configuration()
-    test_real_world_scenarios()
-    test_spectral_weighting()
+    print("\nEnhanced SNR Calculator Examples\n")
     
-    print("\n=== Integration with Existing Code ===")
-    print("The EnhancedSNRCalculator is backward compatible.")
-    print("Use method='legacy' to match existing SNRMeasurement behavior.")
-    print("See utils/enhanced_snr_calculator.py for full API documentation.")
+    # Run all examples
+    example_basic_usage()
+    example_detailed_analysis()
+    example_vad_backends()
+    example_batch_processing()
+    example_real_world_audio()
+    
+    print("All examples completed successfully!")
