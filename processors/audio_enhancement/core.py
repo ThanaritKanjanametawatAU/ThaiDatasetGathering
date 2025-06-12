@@ -21,13 +21,267 @@ from .end_aware_secondary_removal import EndAwareSecondaryRemoval
 from .aggressive_end_suppression import AggressiveEndSuppression
 from .forced_end_silence import ForcedEndSilence
 from .absolute_end_silencer import AbsoluteEndSilencer
+from .loudness_normalizer import LoudnessNormalizer
 from utils.audio_metrics import (
     calculate_snr, calculate_pesq, calculate_stoi,
     calculate_spectral_distortion, calculate_speaker_similarity,
     calculate_all_metrics
 )
+import librosa
 
 logger = logging.getLogger(__name__)
+
+
+class InterruptionPattern:
+    """Represents a detected interruption pattern"""
+    def __init__(self, start: float, end: float, confidence: float):
+        self.start = start
+        self.end = end
+        self.confidence = confidence
+        self.duration = end - start
+
+
+class PatternDetectionEngine:
+    """Ultra-conservative interruption pattern detection"""
+    
+    def __init__(self, confidence_threshold: float = 0.8):
+        self.confidence_threshold = confidence_threshold
+    
+    def detect_interruption_patterns(self, audio: np.ndarray, sr: int) -> List[InterruptionPattern]:
+        """Detect interruption patterns with ultra-conservative approach"""
+        if len(audio) == 0:
+            return []
+            
+        # Feature extraction
+        hop_length = 512
+        frame_length = 2048
+        
+        # MFCC features
+        mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=13, hop_length=hop_length)
+        
+        # Spectral features
+        spectral_centroid = librosa.feature.spectral_centroid(y=audio, sr=sr, hop_length=hop_length)[0]
+        zcr = librosa.feature.zero_crossing_rate(audio, hop_length=hop_length)[0]
+        
+        # Pitch tracking
+        try:
+            pitches, magnitudes = librosa.piptrack(y=audio, sr=sr, hop_length=hop_length, threshold=0.1)
+            pitch_track = []
+            for t in range(pitches.shape[1]):
+                index = magnitudes[:, t].argmax()
+                pitch = pitches[index, t] if magnitudes[index, t] > 0.1 else 0
+                pitch_track.append(pitch)
+            pitch_track = np.array(pitch_track)
+        except:
+            pitch_track = np.zeros(len(spectral_centroid))
+        
+        # Energy calculation
+        energy = []
+        for i in range(0, len(audio) - frame_length, hop_length):
+            frame = audio[i:i + frame_length]
+            energy.append(np.sum(frame ** 2))
+        energy = np.array(energy)
+        
+        if len(energy) == 0:
+            return []
+            
+        # Align features
+        min_len = min(len(spectral_centroid), len(zcr), len(pitch_track), len(energy))
+        spectral_centroid = spectral_centroid[:min_len]
+        zcr = zcr[:min_len]
+        pitch_track = pitch_track[:min_len]
+        energy = energy[:min_len]
+        
+        # Ultra-conservative thresholds
+        energy_threshold = np.percentile(energy, 75)
+        zcr_threshold = np.percentile(zcr, 80)
+        spectral_threshold = np.percentile(spectral_centroid, 70)
+        
+        # Detect potential interruptions
+        interruptions = []
+        for i in range(len(energy)):
+            confidence = 0.0
+            
+            # Energy spike detection
+            if energy[i] > energy_threshold * 2.0:
+                confidence += 0.3
+            
+            # Zero crossing rate anomaly
+            if zcr[i] > zcr_threshold * 1.5:
+                confidence += 0.2
+            
+            # Spectral centroid shift
+            if spectral_centroid[i] > spectral_threshold * 1.8:
+                confidence += 0.2
+            
+            # Pitch discontinuity
+            if i > 0 and abs(pitch_track[i] - pitch_track[i-1]) > 50:
+                confidence += 0.3
+            
+            # Only consider high-confidence patterns
+            if confidence >= self.confidence_threshold:
+                start_time = (i * hop_length) / sr
+                end_time = ((i + 1) * hop_length) / sr
+                interruptions.append({
+                    'start': start_time,
+                    'end': end_time,
+                    'confidence': confidence
+                })
+        
+        # Merge nearby interruptions
+        merged = self._merge_interruptions(interruptions, sr)
+        return merged
+    
+    def _merge_interruptions(self, interruptions: List[dict], sr: int, min_gap: float = 0.2) -> List[InterruptionPattern]:
+        """Merge nearby interruptions"""
+        if not interruptions:
+            return []
+        
+        # Sort by start time
+        interruptions.sort(key=lambda x: x['start'])
+        
+        merged = []
+        current = interruptions[0]
+        
+        for next_int in interruptions[1:]:
+            # If gap is small, merge
+            if next_int['start'] - current['end'] < min_gap:
+                current['end'] = next_int['end']
+                current['confidence'] = max(current['confidence'], next_int['confidence'])
+            else:
+                # Save current and start new one
+                merged.append(InterruptionPattern(
+                    current['start'], current['end'], current['confidence']
+                ))
+                current = next_int
+        
+        # Add last interruption
+        merged.append(InterruptionPattern(
+            current['start'], current['end'], current['confidence']
+        ))
+        
+        return merged
+
+
+class PatternSuppressionEngine:
+    """Apply gentle pattern suppression with padding"""
+    
+    def __init__(self, padding_ms: int = 50, suppression_factor: float = 0.15):
+        self.padding_ms = padding_ms
+        self.suppression_factor = suppression_factor
+    
+    def suppress_patterns(
+        self, 
+        audio: np.ndarray, 
+        patterns: List[InterruptionPattern], 
+        sr: int
+    ) -> np.ndarray:
+        """Apply gentle suppression to detected patterns"""
+        if not patterns:
+            return audio
+        
+        enhanced = audio.copy()
+        padding_samples = int(self.padding_ms * sr / 1000)
+        
+        for pattern in patterns:
+            start_sample = max(0, int(pattern.start * sr) - padding_samples)
+            end_sample = min(len(audio), int(pattern.end * sr) + padding_samples)
+            
+            # Apply gentle suppression (keep 15% of original, suppress 85%)
+            enhanced[start_sample:end_sample] *= self.suppression_factor
+        
+        return enhanced
+
+
+class PatternMetricGANProcessor:
+    """Pattern→MetricGAN+ → 160% Loudness Processor"""
+    
+    def __init__(self, device: str = 'cuda'):
+        self.device = device
+        self.pattern_detector = PatternDetectionEngine()
+        self.pattern_suppressor = PatternSuppressionEngine()
+        self.loudness_normalizer = LoudnessNormalizer()
+        self.metricgan_enhancer = None
+        self._load_metricgan_model()
+    
+    def _load_metricgan_model(self):
+        """Load MetricGAN+ enhancement model"""
+        try:
+            from speechbrain.inference.enhancement import SpectralMaskEnhancement
+            self.metricgan_enhancer = SpectralMaskEnhancement.from_hparams(
+                source="speechbrain/metricgan-plus-voicebank",
+                savedir="pretrained_models/metricgan-plus-voicebank",
+                run_opts={"device": self.device if self.device == 'cuda' and torch.cuda.is_available() else 'cpu'}
+            )
+            logger.info("✓ MetricGAN+ loaded successfully for Pattern→MetricGAN+ processing")
+        except Exception as e:
+            logger.error(f"✗ Failed to load MetricGAN+ for Pattern→MetricGAN+ processing: {e}")
+            self.metricgan_enhancer = None
+    
+    def process(
+        self, 
+        audio: np.ndarray, 
+        sr: int, 
+        target_loudness_multiplier: float = 1.6
+    ) -> Tuple[np.ndarray, Dict]:
+        """Process audio with Pattern→MetricGAN+ → 160% loudness pipeline"""
+        metadata = {
+            'patterns_detected': 0,
+            'metricgan_applied': False,
+            'loudness_normalized': False,
+            'final_loudness_ratio': 1.0
+        }
+        
+        # Step 1: Pattern Detection
+        patterns = self.pattern_detector.detect_interruption_patterns(audio, sr)
+        metadata['patterns_detected'] = len(patterns)
+        
+        # Step 2: Pattern Suppression
+        if patterns:
+            audio = self.pattern_suppressor.suppress_patterns(audio, patterns, sr)
+        
+        # Step 3: MetricGAN+ Enhancement
+        if self.metricgan_enhancer is not None:
+            try:
+                # Convert to tensor for MetricGAN+
+                audio_tensor = torch.FloatTensor(audio).unsqueeze(0)
+                if self.device == 'cuda' and torch.cuda.is_available():
+                    audio_tensor = audio_tensor.cuda()
+                
+                # Apply MetricGAN+ enhancement
+                enhanced_tensor = self.metricgan_enhancer.enhance_batch(audio_tensor, lengths=torch.tensor([1.0]))
+                audio = enhanced_tensor.squeeze().cpu().numpy()
+                metadata['metricgan_applied'] = True
+            except Exception as e:
+                logger.warning(f"MetricGAN+ enhancement failed, continuing without: {e}")
+        
+        # Step 4: 160% Loudness Normalization
+        try:
+            # Create reference at target loudness
+            original_audio = audio.copy()  # Store for reference calculation
+            louder_reference = original_audio * target_loudness_multiplier
+            
+            # Normalize to match target loudness
+            audio = self.loudness_normalizer.normalize_loudness(
+                audio, 
+                louder_reference,
+                sr,
+                method='rms',
+                headroom_db=-1.0,
+                soft_limit=True
+            )
+            
+            # Calculate actual loudness ratio achieved
+            orig_rms = np.sqrt(np.mean(original_audio**2))
+            proc_rms = np.sqrt(np.mean(audio**2))
+            if orig_rms > 1e-8:
+                metadata['final_loudness_ratio'] = proc_rms / orig_rms
+            
+            metadata['loudness_normalized'] = True
+        except Exception as e:
+            logger.warning(f"Loudness normalization failed: {e}")
+        
+        return audio, metadata
 
 
 class AudioEnhancer:
@@ -85,6 +339,17 @@ class AudioEnhancer:
             'check_secondary_speaker': True,
             'preserve_primary': True,
             'passes': 2  # One for separation, one for quality preservation
+        },
+        'pattern_metricgan_plus': {
+            'skip': False,
+            'use_pattern_detection': True,
+            'pattern_confidence_threshold': 0.8,
+            'pattern_suppression_factor': 0.15,  # Keep 15%, suppress 85%
+            'pattern_padding_ms': 50,
+            'use_metricgan': True,
+            'apply_loudness_normalization': True,
+            'target_loudness_multiplier': 1.6,  # 160%
+            'passes': 1
         }
     }
     
@@ -255,6 +520,15 @@ class AudioEnhancer:
         self.absolute_end_silencer = AbsoluteEndSilencer(
             silence_duration=0.2  # Only silence last 0.2 seconds as absolute last resort
         )
+        
+        # Initialize Pattern→MetricGAN+ processor for pattern_metricgan_plus enhancement level
+        try:
+            device = 'cuda' if use_gpu and torch.cuda.is_available() else 'cpu'
+            self.pattern_metricgan_processor = PatternMetricGANProcessor(device=device)
+            logger.info("Initialized Pattern→MetricGAN+ processor")
+        except Exception as e:
+            logger.warning(f"Could not load Pattern→MetricGAN+ processor: {e}")
+            self.pattern_metricgan_processor = None
         
         # Initialize audio-separator based remover (optional, more powerful)
         self.audio_separator_remover = None
@@ -545,6 +819,61 @@ class AudioEnhancer:
                 
             except Exception as e:
                 logger.error(f"Selective removal failed: {e}, falling back to regular processing")
+                # Continue with regular processing
+        
+        # PRIORITY: For pattern_metricgan_plus, use Pattern→MetricGAN+ → 160% loudness pipeline
+        if noise_level == 'pattern_metricgan_plus' and self.pattern_metricgan_processor is not None:
+            try:
+                logger.info("=== USING PATTERN→METRICGAN+ → 160% LOUDNESS ===")
+                
+                # Get target loudness multiplier from config
+                target_multiplier = config.get('target_loudness_multiplier', 1.6)
+                enhanced, pattern_metadata = self.pattern_metricgan_processor.process(
+                    audio, sample_rate, target_multiplier
+                )
+                
+                # Calculate quality metrics
+                enhanced_metrics = {}
+                try:
+                    enhanced_metrics = calculate_all_metrics(audio, enhanced, sample_rate)
+                except Exception as e:
+                    logger.warning(f"Failed to calculate quality metrics: {e}")
+                
+                # Return early with preserved dtype
+                if enhanced.dtype != original_dtype:
+                    enhanced = enhanced.astype(original_dtype)
+                
+                if return_metadata:
+                    processing_time = time.time() - start_time
+                    metadata = {
+                        'enhanced': True,
+                        'noise_level': noise_level,
+                        'enhancement_level': 'pattern_metricgan_plus',
+                        'processing_time': processing_time,
+                        'engine_used': 'pattern_metricgan_plus',
+                        'pattern_detection': {
+                            'patterns_detected': pattern_metadata.get('patterns_detected', 0),
+                            'metricgan_applied': pattern_metadata.get('metricgan_applied', False),
+                            'loudness_normalized': pattern_metadata.get('loudness_normalized', False),
+                            'final_loudness_ratio': pattern_metadata.get('final_loudness_ratio', 1.0),
+                            'target_loudness_multiplier': target_multiplier
+                        }
+                    }
+                    
+                    # Add quality metrics if available
+                    if enhanced_metrics:
+                        metadata.update({
+                            'pesq': enhanced_metrics.get('pesq', 0.0),
+                            'stoi': enhanced_metrics.get('stoi', 0.0),
+                            'snr_before': enhanced_metrics.get('snr_before', 0.0),
+                            'snr_after': enhanced_metrics.get('snr_after', 0.0)
+                        })
+                    
+                    return enhanced, metadata
+                return enhanced
+                
+            except Exception as e:
+                logger.error(f"Pattern→MetricGAN+ processing failed: {e}, falling back to regular processing")
                 # Continue with regular processing
         
         # PRIORITY: For ultra_aggressive, check for overlapping speakers FIRST
