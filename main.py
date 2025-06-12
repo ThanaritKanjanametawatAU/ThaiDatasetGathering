@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 
 from config import (
     DATASET_CONFIG, TARGET_DATASET, LOG_CONFIG, EXIT_CODES,
-    HF_TOKEN_FILE, CHECKPOINT_DIR, LOG_DIR
+    HF_TOKEN_FILE, CHECKPOINT_DIR, LOG_DIR, validate_enhancement_level_compatibility
 )
 from utils.logging import setup_logging
 from utils.huggingface import read_hf_token, authenticate_hf, create_hf_dataset, upload_dataset, get_last_id
@@ -148,9 +148,10 @@ def parse_arguments() -> argparse.Namespace:
     enhancement_group.add_argument(
         '--enhancement-level',
         type=str,
-        choices=['mild', 'moderate', 'aggressive', 'ultra_aggressive', 'selective_secondary_removal'],
+        choices=['mild', 'moderate', 'aggressive', 'ultra_aggressive', 
+                 'selective_secondary_removal', 'pattern_metricgan_plus'],  # ADD NEW CHOICE
         default='moderate',
-        help='Enhancement level: mild, moderate, aggressive, or ultra_aggressive (default: moderate)'
+        help='Enhancement level: mild, moderate, aggressive, ultra_aggressive, selective_secondary_removal, or pattern_metricgan_plus (default: moderate)'
     )
     enhancement_group.add_argument(
         '--enhancement-gpu',
@@ -205,6 +206,45 @@ def parse_arguments() -> argparse.Namespace:
         help='Include samples that fail to reach target SNR with metadata'
     )
 
+    # NEW: Add Pattern→MetricGAN+ specific arguments
+    pattern_metricgan_group = parser.add_argument_group('Pattern→MetricGAN+ Enhancement')
+    pattern_metricgan_group.add_argument(
+        '--pattern-confidence-threshold',
+        type=float,
+        default=0.8,
+        help='Confidence threshold for pattern detection (default: 0.8)'
+    )
+    pattern_metricgan_group.add_argument(
+        '--pattern-suppression-factor',
+        type=float,
+        default=0.15,
+        help='Factor for pattern suppression - lower values suppress more (default: 0.15)'
+    )
+    pattern_metricgan_group.add_argument(
+        '--pattern-padding-ms',
+        type=int,
+        default=50,
+        help='Padding around detected patterns in milliseconds (default: 50)'
+    )
+    pattern_metricgan_group.add_argument(
+        '--loudness-multiplier',
+        type=float,
+        default=1.6,
+        help='Target loudness multiplier for enhancement (default: 1.6 = 160%%)'
+    )
+    pattern_metricgan_group.add_argument(
+        '--disable-metricgan',
+        action='store_true',
+        help='Disable MetricGAN+ processing (use only pattern suppression and loudness)'
+    )
+    pattern_metricgan_group.add_argument(
+        '--metricgan-device',
+        type=str,
+        choices=['auto', 'cuda', 'cpu'],
+        default='auto',
+        help='Device for MetricGAN+ processing (default: auto)'
+    )
+
     args = parser.parse_args()
 
     # Validate arguments
@@ -219,6 +259,28 @@ def parse_arguments() -> argparse.Namespace:
 
     if args.checkpoint and args.resume:
         parser.error("Cannot use both --checkpoint and --resume")
+
+    # NEW: Handle Pattern→MetricGAN+ compatibility and validation
+    if hasattr(args, 'enhancement_level'):
+        args.enhancement_level = validate_enhancement_level_compatibility(args.enhancement_level)
+        
+        # Auto-enable audio enhancement for Pattern→MetricGAN+
+        if args.enhancement_level == 'pattern_metricgan_plus':
+            args.enable_audio_enhancement = True
+            logger.info("Auto-enabled audio enhancement for Pattern→MetricGAN+ level")
+    
+    # Validate Pattern→MetricGAN+ specific arguments
+    if getattr(args, 'pattern_confidence_threshold', None) is not None:
+        if not 0.5 <= args.pattern_confidence_threshold <= 1.0:
+            parser.error("Pattern confidence threshold must be between 0.5 and 1.0")
+    
+    if getattr(args, 'pattern_suppression_factor', None) is not None:
+        if not 0.0 <= args.pattern_suppression_factor <= 1.0:
+            parser.error("Pattern suppression factor must be between 0.0 and 1.0")
+    
+    if getattr(args, 'loudness_multiplier', None) is not None:
+        if not 1.0 <= args.loudness_multiplier <= 3.0:
+            parser.error("Loudness multiplier must be between 1.0 and 3.0")
 
     return args
 
@@ -281,6 +343,30 @@ def create_processor(dataset_name: str, config: Dict[str, Any]) -> BaseProcessor
 
     # Merge dataset config with global config
     merged_config = {**config, **dataset_config}
+    
+    # NEW: Add Pattern→MetricGAN+ configuration if enabled
+    if merged_config.get("enhancement_level") == "pattern_metricgan_plus":
+        from config import PATTERN_METRICGAN_CONFIG
+        
+        # Override with command-line arguments if provided
+        pattern_config = dict(PATTERN_METRICGAN_CONFIG)
+        
+        # Update with CLI arguments
+        if "pattern_confidence_threshold" in merged_config:
+            pattern_config["pattern_detection"]["confidence_threshold"] = merged_config["pattern_confidence_threshold"]
+        if "pattern_suppression_factor" in merged_config:
+            pattern_config["pattern_suppression"]["suppression_factor"] = merged_config["pattern_suppression_factor"]
+        if "pattern_padding_ms" in merged_config:
+            pattern_config["pattern_suppression"]["padding_ms"] = merged_config["pattern_padding_ms"]
+        if "loudness_multiplier" in merged_config:
+            pattern_config["loudness_enhancement"]["target_multiplier"] = merged_config["loudness_multiplier"]
+        if "disable_metricgan" in merged_config:
+            pattern_config["metricgan"]["enabled"] = not merged_config["disable_metricgan"]
+        if "metricgan_device" in merged_config:
+            pattern_config["metricgan"]["device"] = merged_config["metricgan_device"]
+        
+        merged_config["pattern_metricgan_config"] = pattern_config
+        logger.info(f"Pattern→MetricGAN+ configuration applied for {dataset_name}")
 
     # Handle cache clearing if requested
     if config.get("clear_cache", False):
@@ -614,7 +700,15 @@ def process_streaming_mode(args, dataset_names: List[str]) -> int:
                     "dashboard": enhancement_dashboard,
                     "batch_size": args.enhancement_batch_size if args.enable_audio_enhancement else None,
                     "level": args.enhancement_level if args.enable_audio_enhancement else None
-                }
+                },
+                # NEW: Add Pattern→MetricGAN+ specific configuration
+                "enhancement_level": args.enhancement_level,
+                "pattern_confidence_threshold": getattr(args, 'pattern_confidence_threshold', 0.8),
+                "pattern_suppression_factor": getattr(args, 'pattern_suppression_factor', 0.15),
+                "pattern_padding_ms": getattr(args, 'pattern_padding_ms', 50),
+                "loudness_multiplier": getattr(args, 'loudness_multiplier', 1.6),
+                "disable_metricgan": getattr(args, 'disable_metricgan', False),
+                "metricgan_device": getattr(args, 'metricgan_device', 'auto')
             }
             
             # Create processor
@@ -1099,7 +1193,14 @@ def main() -> int:
                 "enable_secondary_speaker_removal": args.enable_secondary_speaker_removal,
                 "use_audio_separator": args.use_audio_separator,
                 "enable_35db_enhancement": args.enable_35db_enhancement,
-                "target_snr": args.target_snr
+                "target_snr": args.target_snr,
+                # NEW: Add Pattern→MetricGAN+ specific configuration
+                "pattern_confidence_threshold": getattr(args, 'pattern_confidence_threshold', 0.8),
+                "pattern_suppression_factor": getattr(args, 'pattern_suppression_factor', 0.15),
+                "pattern_padding_ms": getattr(args, 'pattern_padding_ms', 50),
+                "loudness_multiplier": getattr(args, 'loudness_multiplier', 1.6),
+                "disable_metricgan": getattr(args, 'disable_metricgan', False),
+                "metricgan_device": getattr(args, 'metricgan_device', 'auto')
             }
             processor = create_processor(dataset_name, processor_config)
 

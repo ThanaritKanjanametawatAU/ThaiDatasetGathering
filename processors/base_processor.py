@@ -124,6 +124,14 @@ class BaseProcessor(ABC):
             self.audio_enhancer = None
             self.enhancement_level = None
             
+        # NEW: Pattern→MetricGAN+ configuration
+        self.pattern_metricgan_config = config.get("pattern_metricgan_config", {})
+        self.enhancement_level = config.get("enhancement_level", "moderate")
+        
+        # Initialize Pattern→MetricGAN+ if enabled
+        if self.enhancement_level == "pattern_metricgan_plus":
+            self._initialize_pattern_metricgan_enhancement()
+            
         self.enhancement_stats = {
             "total_enhanced": 0,
             "enhancement_failures": 0,
@@ -182,10 +190,29 @@ class BaseProcessor(ABC):
             if audio_array.dtype == np.float16:
                 audio_array = audio_array.astype(np.float32)
             
+            # Apply enhancement with Pattern→MetricGAN+ configuration
+            enhance_kwargs = {}
+            if self.enhancement_level == "pattern_metricgan_plus":
+                enhance_kwargs.update({
+                    'pattern_metricgan_config': self.pattern_metricgan_config,
+                    'enhancement_level': 'pattern_metricgan_plus',
+                    'return_detailed_metadata': True
+                })
+            
             # Apply enhancement
             enhanced_array, metadata = self.audio_enhancer.enhance(
-                audio_array, sample_rate, return_metadata=True
+                audio_array, sample_rate, return_metadata=True, **enhance_kwargs
             )
+            
+            # Add Pattern→MetricGAN+ specific metadata
+            if self.enhancement_level == "pattern_metricgan_plus":
+                metadata.update({
+                    'enhancement_method': 'pattern_metricgan_plus',
+                    'pattern_detection_used': True,
+                    'metricgan_applied': metadata.get('metricgan_applied', False),
+                    'loudness_enhanced': metadata.get('loudness_enhanced', False),
+                    'configuration_source': 'cli' if hasattr(self, '_from_cli') else 'config'
+                })
             
             # Update statistics
             # TODO: Implement _update_enhancement_stats method
@@ -586,6 +613,55 @@ class BaseProcessor(ABC):
             self.logger.error(f"Failed to initialize audio enhancer: {e}")
             self.noise_reduction_enabled = False
             self.audio_enhancer = None
+
+    def _initialize_pattern_metricgan_enhancement(self):
+        """Initialize Pattern→MetricGAN+ enhancement pipeline."""
+        try:
+            # Validate configuration
+            self._validate_pattern_metricgan_config()
+            
+            # Set enhancement flags
+            self.noise_reduction_enabled = True
+            
+            # Load Pattern→MetricGAN+ configuration into audio enhancement
+            if not self.audio_enhancer and ENHANCEMENT_AVAILABLE:
+                self._initialize_audio_enhancer()
+                
+            # Override enhancement level in enhancer
+            if self.audio_enhancer:
+                self.audio_enhancer.enhancement_level = "pattern_metricgan_plus"
+                
+            self.logger.info("Pattern→MetricGAN+ enhancement initialized successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Pattern→MetricGAN+ enhancement: {e}")
+            # Fall back to standard enhancement
+            self.enhancement_level = "moderate"
+            self.pattern_metricgan_config = {}
+
+    def _validate_pattern_metricgan_config(self):
+        """Validate Pattern→MetricGAN+ configuration parameters."""
+        config = self.pattern_metricgan_config
+        
+        # Validate pattern detection config
+        pattern_detection = config.get("pattern_detection", {})
+        confidence_threshold = pattern_detection.get("confidence_threshold", 0.8)
+        if not 0.5 <= confidence_threshold <= 1.0:
+            raise ValueError(f"Pattern confidence threshold {confidence_threshold} must be between 0.5 and 1.0")
+        
+        # Validate pattern suppression config
+        pattern_suppression = config.get("pattern_suppression", {})
+        suppression_factor = pattern_suppression.get("suppression_factor", 0.15)
+        if not 0.0 <= suppression_factor <= 1.0:
+            raise ValueError(f"Pattern suppression factor {suppression_factor} must be between 0.0 and 1.0")
+        
+        # Validate loudness enhancement config
+        loudness_enhancement = config.get("loudness_enhancement", {})
+        target_multiplier = loudness_enhancement.get("target_multiplier", 1.6)
+        if not 1.0 <= target_multiplier <= 3.0:
+            raise ValueError(f"Loudness multiplier {target_multiplier} must be between 1.0 and 3.0")
+        
+        self.logger.info("Pattern→MetricGAN+ configuration validated successfully")
             
     def _apply_noise_reduction(self, audio_data: bytes, sample_id: str) -> Optional[bytes]:
         """
