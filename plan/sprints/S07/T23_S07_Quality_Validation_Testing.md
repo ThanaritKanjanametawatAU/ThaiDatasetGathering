@@ -435,5 +435,20 @@ Ensure consistent quality metrics:
 2. `processors/audio_enhancement/quality/real_sample_validator.py` - Real sample testing framework  
 3. `processors/audio_enhancement/quality/quality_monitor.py` - Monitoring and regression testing
 4. `tests/test_pattern_metricgan_quality.py` - Comprehensive test suite (32 tests)
+5. `tests/test_pattern_metricgan_integration.py` - Integration tests and bug fix validation
 
-Task T23 is now complete and ready for integration with the main Pattern→MetricGAN+ pipeline.
+### Critical Bug Fix (Post-Implementation)
+
+**Issue Discovered**: Pattern→MetricGAN+ enhancement was not being applied during preprocessing when running `./main.sh`.
+
+**Root Cause**: AudioEnhancer initialization was overriding `noise_reduction_enabled` to `False` after Pattern→MetricGAN+ initialization, preventing the enhancement from being applied.
+
+**Resolution**: 
+- Added check to skip AudioEnhancer initialization when Pattern→MetricGAN+ is active
+- Fixed loudness normalization to use true original audio reference for accurate ratio calculation
+- Adjusted headroom to -0.1dB for better loudness enhancement capability
+- Added comprehensive integration tests to prevent regression
+
+**Commit**: a532d0b - fix(pattern_metricgan): Fix Pattern→MetricGAN+ integration to ensure audio enhancement is applied
+
+Task T23 is now complete with all critical bugs resolved and Pattern→MetricGAN+ pipeline fully operational.
