@@ -51,8 +51,8 @@ done
 # Configuration
 export HF_HUB_ENABLE_HF_TRANSFER=1
 CONDA_ENV="thaidataset"
-SAMPLES_PER_DATASET=100
-HF_REPO="Thanarit/Thai-Voice-10000000"  # Repository for 1M samples
+SAMPLES_PER_DATASET=1000000
+HF_REPO="Thanarit/Thai-Voice-1000000"  # Repository for 1M samples
 
 # Feature flags (all enabled)
 ENABLE_SPEAKER_ID="--enable-speaker-id"  # Re-enabled after fixing clustering
@@ -100,7 +100,7 @@ SPEAKER_EPSILON="0.3"           # Slightly increased for more flexible clusterin
 # Datasets to test (fresh mode with GigaSpeech2 and ProcessedVoiceTH)
 # DATASETS="GigaSpeech2 MozillaCommonVoice"
 DATASETS="GigaSpeech2"  # Default to GigaSpeech2 for streaming
-UPLOAD_BATCH_SIZE=100000  # Increased for better performance with 1M samples
+UPLOAD_BATCH_SIZE=10000  # Increased for better performance with 1M samples
 
 
 # Additional audio preprocessing settings for aggressive enhancement
