@@ -232,6 +232,9 @@ class PatternMetricGANProcessor:
             'final_loudness_ratio': 1.0
         }
         
+        # Store true original audio for loudness comparison
+        true_original_audio = audio.copy()
+        
         # Step 1: Pattern Detection
         patterns = self.pattern_detector.detect_interruption_patterns(audio, sr)
         metadata['patterns_detected'] = len(patterns)
@@ -257,22 +260,22 @@ class PatternMetricGANProcessor:
         
         # Step 4: 160% Loudness Normalization
         try:
-            # Create reference at target loudness
-            original_audio = audio.copy()  # Store for reference calculation
-            louder_reference = original_audio * target_loudness_multiplier
+            # Create reference at target loudness based on true original
+            louder_reference = true_original_audio * target_loudness_multiplier
             
             # Normalize to match target loudness
+            # Use more permissive headroom for Pattern→MetricGAN+
             audio = self.loudness_normalizer.normalize_loudness(
                 audio, 
                 louder_reference,
                 sr,
                 method='rms',
-                headroom_db=-1.0,
+                headroom_db=-0.1,  # Allow peaks up to -0.1dB (almost full scale)
                 soft_limit=True
             )
             
-            # Calculate actual loudness ratio achieved
-            orig_rms = np.sqrt(np.mean(original_audio**2))
+            # Calculate actual loudness ratio achieved vs true original
+            orig_rms = np.sqrt(np.mean(true_original_audio**2))
             proc_rms = np.sqrt(np.mean(audio**2))
             if orig_rms > 1e-8:
                 metadata['final_loudness_ratio'] = proc_rms / orig_rms

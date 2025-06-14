@@ -116,6 +116,34 @@ VALIDATION_RULES = {
     }
 }
 
+# NEW: Pattern→MetricGAN+ validation rules
+PATTERN_METRICGAN_VALIDATION = {
+    "pattern_confidence_threshold": {
+        "type": float,
+        "min_value": 0.5,
+        "max_value": 1.0,
+        "error_message": "Pattern confidence threshold must be between 0.5 and 1.0"
+    },
+    "pattern_suppression_factor": {
+        "type": float,
+        "min_value": 0.0,
+        "max_value": 1.0,
+        "error_message": "Pattern suppression factor must be between 0.0 and 1.0"
+    },
+    "target_loudness_multiplier": {
+        "type": float,
+        "min_value": 1.0,
+        "max_value": 3.0,
+        "error_message": "Target loudness multiplier must be between 1.0 and 3.0"
+    },
+    "pattern_padding_ms": {
+        "type": int,
+        "min_value": 0,
+        "max_value": 200,
+        "error_message": "Pattern padding must be between 0 and 200 milliseconds"
+    }
+}
+
 # Audio processing configuration
 AUDIO_CONFIG = {
     "target_format": "wav",
@@ -222,6 +250,20 @@ NOISE_REDUCTION_CONFIG = {
             "dry_wet_ratio": 0.02,
             "prop_decrease": 1.0,
             "target_snr": 30
+        },
+        # NEW: Add Pattern→MetricGAN+ level
+        "pattern_metricgan_plus": {
+            "dry_wet_ratio": 0.0,    # Full processing
+            "prop_decrease": 1.0,    # Maximum enhancement
+            "target_snr": 35,        # High quality target
+            "use_pattern_detection": True,
+            "pattern_confidence_threshold": 0.8,
+            "pattern_suppression_factor": 0.15,  # Keep 15%
+            "pattern_padding_ms": 50,
+            "use_metricgan": True,
+            "apply_loudness_normalization": True,
+            "target_loudness_multiplier": 1.6,  # 160%
+            "passes": 1
         }
     },
     "quality_targets": {
@@ -255,6 +297,148 @@ NOISE_REDUCTION_CONFIG = {
         "noise_types"
     ]
 }
+
+# NEW: Add dedicated Pattern→MetricGAN+ configuration section
+PATTERN_METRICGAN_CONFIG = {
+    "enabled": False,  # Controlled by enhancement level selection
+    "pattern_detection": {
+        "confidence_threshold": 0.8,
+        "energy_threshold_percentile": 75,
+        "zcr_threshold_percentile": 80,
+        "spectral_threshold_percentile": 70,
+        "context_energy_multiplier": 2.0,
+        "min_interruption_duration_ms": 100,
+        "max_interruption_duration_ms": 3000
+    },
+    "pattern_suppression": {
+        "padding_ms": 50,
+        "suppression_factor": 0.15,  # Keep 15% of original
+        "min_gap_seconds": 0.2,
+        "fade_in_out_ms": 10,  # Smooth transitions
+        "preserve_primary_speaker": True
+    },
+    "metricgan": {
+        "model_source": "speechbrain/metricgan-plus-voicebank",
+        "device": "auto",  # auto, cuda, cpu
+        "batch_size": 1,
+        "cache_model": True,
+        "fallback_to_cpu": True
+    },
+    "loudness_enhancement": {
+        "target_multiplier": 1.6,  # 160% of original
+        "method": "rms",           # rms, peak, lufs
+        "headroom_db": -1.0,       # Prevent clipping
+        "soft_limit": True,
+        "normalize_before_enhancement": True
+    },
+    "quality_validation": {
+        "min_pesq_score": 2.5,
+        "min_stoi_score": 0.80,
+        "max_spectral_distortion": 0.2,
+        "validate_pattern_suppression": True
+    }
+}
+
+
+# NEW: Environment variable configuration loading
+def load_pattern_metricgan_config_from_env():
+    """Load Pattern→MetricGAN+ configuration from environment variables."""
+    env_config = {}
+    
+    # Pattern detection environment variables
+    if os.getenv('PATTERN_CONFIDENCE_THRESHOLD'):
+        env_config.setdefault('pattern_detection', {})['confidence_threshold'] = float(os.getenv('PATTERN_CONFIDENCE_THRESHOLD'))
+    
+    if os.getenv('PATTERN_ENERGY_THRESHOLD'):
+        env_config.setdefault('pattern_detection', {})['energy_threshold_percentile'] = int(os.getenv('PATTERN_ENERGY_THRESHOLD'))
+    
+    # Pattern suppression environment variables
+    if os.getenv('PATTERN_SUPPRESSION_FACTOR'):
+        env_config.setdefault('pattern_suppression', {})['suppression_factor'] = float(os.getenv('PATTERN_SUPPRESSION_FACTOR'))
+        
+    if os.getenv('PATTERN_PADDING_MS'):
+        env_config.setdefault('pattern_suppression', {})['padding_ms'] = int(os.getenv('PATTERN_PADDING_MS'))
+    
+    # MetricGAN environment variables
+    if os.getenv('METRICGAN_DEVICE'):
+        env_config.setdefault('metricgan', {})['device'] = os.getenv('METRICGAN_DEVICE')
+        
+    if os.getenv('METRICGAN_BATCH_SIZE'):
+        env_config.setdefault('metricgan', {})['batch_size'] = int(os.getenv('METRICGAN_BATCH_SIZE'))
+    
+    # Loudness enhancement environment variables
+    if os.getenv('LOUDNESS_MULTIPLIER'):
+        env_config.setdefault('loudness_enhancement', {})['target_multiplier'] = float(os.getenv('LOUDNESS_MULTIPLIER'))
+        
+    if os.getenv('LOUDNESS_METHOD'):
+        env_config.setdefault('loudness_enhancement', {})['method'] = os.getenv('LOUDNESS_METHOD')
+    
+    return env_config
+
+
+def validate_enhancement_level_compatibility(enhancement_level: str) -> str:
+    """Validate and migrate enhancement level for backward compatibility."""
+    logger = logging.getLogger(__name__)
+    
+    # Map old enhancement levels to new ones if needed
+    level_mapping = {
+        'noise_reduction': 'moderate',          # Legacy mapping
+        'advanced': 'aggressive',               # Legacy mapping
+        'pattern_metricgan': 'pattern_metricgan_plus'  # Forward compatibility
+    }
+    
+    if enhancement_level in level_mapping:
+        logger.warning(f"Enhancement level '{enhancement_level}' deprecated, using '{level_mapping[enhancement_level]}'")
+        return level_mapping[enhancement_level]
+    
+    # Validate against current levels
+    valid_levels = list(NOISE_REDUCTION_CONFIG['levels'].keys())
+    if enhancement_level not in valid_levels:
+        logger.warning(f"Unknown enhancement level '{enhancement_level}', falling back to 'moderate'")
+        return 'moderate'
+    
+    return enhancement_level
+
+
+def deep_update(base_dict, update_dict):
+    """Deep update dictionary with nested updates."""
+    for key, value in update_dict.items():
+        if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
+            deep_update(base_dict[key], value)
+        else:
+            base_dict[key] = value
+
+
+# Update PATTERN_METRICGAN_CONFIG with environment overrides
+_env_pattern_config = load_pattern_metricgan_config_from_env()
+if _env_pattern_config:
+    deep_update(PATTERN_METRICGAN_CONFIG, _env_pattern_config)
+
+
+"""
+Pattern→MetricGAN+ Environment Variables:
+
+Pattern Detection:
+- PATTERN_CONFIDENCE_THRESHOLD: Confidence threshold (0.5-1.0, default: 0.8)
+- PATTERN_ENERGY_THRESHOLD: Energy threshold percentile (50-95, default: 75)
+
+Pattern Suppression:
+- PATTERN_SUPPRESSION_FACTOR: Suppression factor (0.0-1.0, default: 0.15)
+- PATTERN_PADDING_MS: Padding in milliseconds (0-200, default: 50)
+
+MetricGAN:
+- METRICGAN_DEVICE: Processing device (auto/cuda/cpu, default: auto)
+- METRICGAN_BATCH_SIZE: Batch size (1-8, default: 1)
+
+Loudness Enhancement:
+- LOUDNESS_MULTIPLIER: Target multiplier (1.0-3.0, default: 1.6)
+- LOUDNESS_METHOD: Enhancement method (rms/peak/lufs, default: rms)
+
+Example usage:
+    export PATTERN_CONFIDENCE_THRESHOLD=0.9
+    export LOUDNESS_MULTIPLIER=1.8
+    python main.py --streaming --enhancement-level pattern_metricgan_plus gigaspeech2
+"""
 
 # Audio Quality Enhancement to 35dB SNR Configuration
 ENHANCEMENT_35DB_CONFIG = {

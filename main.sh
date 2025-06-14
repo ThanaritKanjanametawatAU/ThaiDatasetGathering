@@ -51,8 +51,8 @@ done
 # Configuration
 export HF_HUB_ENABLE_HF_TRANSFER=1
 CONDA_ENV="thaidataset"
-SAMPLES_PER_DATASET=100
-HF_REPO="Thanarit/Thai-Voice-10000000"  # Repository for 1M samples
+SAMPLES_PER_DATASET=1000000
+HF_REPO="Thanarit/Thai-Voice-1000000"  # Repository for 1M samples
 
 # Feature flags (all enabled)
 ENABLE_SPEAKER_ID="--enable-speaker-id"  # Re-enabled after fixing clustering
@@ -63,13 +63,13 @@ ENABLE_STREAMING="--streaming"
 ENABLE_DASHBOARD=""  # Disabled dashboard for now
 
 # Enhancement settings
-# Using selective_secondary_removal for professional secondary speaker removal
-# This uses the SelectiveSecondaryRemoval class which:
-# - Detects secondary speakers intelligently (not blind time-based removal)
-# - Completely removes detected secondary speakers (sets to silence)
-# - Preserves ALL primary speaker content
-# This addresses the issue where the system was "removing the last 2 seconds of the audio which remove the primary speaker too"
-ENHANCEMENT_LEVEL="selective_secondary_removal"  # Professional secondary speaker removal
+# Using Pattern→MetricGAN+ → 160% loudness enhancement
+# This applies:
+# - Ultra-conservative pattern detection (0.8 confidence threshold)
+# - Gentle suppression (85% reduction, 15% retention)
+# - MetricGAN+ neural enhancement
+# - 160% RMS-based loudness normalization
+ENHANCEMENT_LEVEL="pattern_metricgan_plus"  # Pattern→MetricGAN+ enhancement
 ENHANCEMENT_GPU="--enhancement-gpu"  # Using GPU for faster processing (remove if no GPU)
 
 # Secondary speaker removal is integrated into selective_secondary_removal
@@ -99,8 +99,8 @@ SPEAKER_EPSILON="0.3"           # Slightly increased for more flexible clusterin
 
 # Datasets to test (fresh mode with GigaSpeech2 and ProcessedVoiceTH)
 # DATASETS="GigaSpeech2 MozillaCommonVoice"
-DATASETS="GigaSpeech2"
-UPLOAD_BATCH_SIZE=100000  # Increased for better performance with 1M samples
+DATASETS="GigaSpeech2"  # Default to GigaSpeech2 for streaming
+UPLOAD_BATCH_SIZE=10000  # Increased for better performance with 1M samples
 
 
 # Additional audio preprocessing settings for aggressive enhancement
@@ -124,7 +124,7 @@ log "  - Samples per dataset: $SAMPLES_PER_DATASET"
 log "  - Datasets: $DATASETS"
 log "  - Target repository: $HF_REPO"
 log "  - Features: Speaker ID, STT, Audio Enhancement, 35dB SNR Enhancement, Streaming"
-log "  - Enhancement level: $ENHANCEMENT_LEVEL (balanced for speaker ID compatibility)"
+log "  - Enhancement level: $ENHANCEMENT_LEVEL (Pattern→MetricGAN+ → 160% loudness)"
 log "  - 35dB SNR Enhancement:"
 log "    - Target SNR: $TARGET_SNR dB"
 log "    - Min acceptable SNR: $MIN_ACCEPTABLE_SNR dB"

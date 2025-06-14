@@ -85,34 +85,14 @@ class LoudnessNormalizer:
             raise ValueError(f"Unknown method: {method}")
         
         # Apply gain - for extreme cases, use a careful approach
-        if gain > 8.0:  # Large gain needed
-            # For very large gains, we need a more sophisticated approach
-            # to avoid artifacts while still achieving target loudness
+        if gain > 2.0:  # Lower threshold for special handling
+            # For large gains, apply directly but check for clipping
+            normalized = audio * gain
             
-            # Calculate safe initial gain based on peak headroom
-            peak_val = np.max(np.abs(audio))
-            if peak_val > 1e-8:
-                safe_initial_gain = min(gain, 0.9 / peak_val)
-            else:
-                safe_initial_gain = gain
-            
-            # Apply initial gain
-            normalized = audio * safe_initial_gain
-            
-            # Calculate how close we are to target
-            current_rms = np.sqrt(np.mean(normalized**2))
-            target_rms = np.sqrt(np.mean(reference**2))
-            
-            # If we're still far from target, apply additional gain carefully
-            if current_rms < target_rms * 0.9:  # Within 90% of target
-                additional_gain = target_rms / (current_rms + 1e-8)
-                # Limit additional gain to prevent artifacts
-                additional_gain = min(additional_gain, 2.0)
-                normalized = normalized * additional_gain
-            
-            # Ensure we don't exceed headroom
+            # Apply headroom and soft limiting if needed
             headroom_linear = 10 ** (headroom_db / 20)
             max_val = np.max(np.abs(normalized))
+            
             if max_val > headroom_linear:
                 if soft_limit:
                     normalized = self._apply_soft_limiting(normalized, headroom_linear)
